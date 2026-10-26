@@ -1,10 +1,10 @@
 (() => {
- const $=s=>document.querySelector(s), configuredApiUrl=(window.ALOKA_ADMIN_API_URL||'').trim(), localApiFallback=['localhost','127.0.0.1'].includes(location.hostname), apiConfigured=Boolean(configuredApiUrl||localApiFallback), apiUrl=new URL(configuredApiUrl||(localApiFallback?'/api/admin.php':'/'),location.origin).href;
+ const $=s=>document.querySelector(s), configuredApiUrl=(window.ALOKA_ADMIN_API_URL||'').trim(), localHost=['localhost','127.0.0.1'].includes(location.hostname), localApiFallback=localHost&&(!location.port||location.port==='8000'), apiConfigured=Boolean(configuredApiUrl||localApiFallback), apiUrl=new URL(configuredApiUrl||(localApiFallback?'/api/admin.php':'/'),location.origin).href;
  let csrf='', currentPath='', selectedRestoreSha='', sessionExpired=false, dirty=false, githubConnected=false;
  const isDashboard=Boolean($('#admin-nav'));
  function notice(message,error=false){const node=$('#admin-notice')||$('#login-notice');if(!node)return;node.textContent=message;node.classList.toggle('is-error',error);node.hidden=false;}
  async function request(action,{method='GET',body,form}={}){
-  if(!apiConfigured)throw Error('Admin API is not configured. Set its HTTPS URL in admin/admin-config.js.');
+  if(!apiConfigured)throw Error(localHost?'Live Server cannot run the PHP admin API. Open ALOKA through its PHP server, such as http://localhost:8000/admin/login/.':'Admin API is not configured. Set its HTTPS URL in admin/admin-config.js.');
   const url=new URL(apiUrl),[name,query]=action.split('&',2);url.searchParams.set('action',name);if(query)new URLSearchParams(query).forEach((value,key)=>url.searchParams.set(key,value));
   const headers={};if(method==='POST'){headers['X-CSRF-Token']=csrf;if(!form)headers['Content-Type']='application/json';}
   const response=await fetch(url,{method,credentials:'include',headers,body:form?body:body?JSON.stringify(body):undefined});
