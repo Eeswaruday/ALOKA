@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ALOKA — Intelligence beyond limits
 
 ALOKA is a static, local-first lab preparation site built with HTML, CSS, and vanilla JavaScript. It includes a responsive learning workspace, experiment library, search, viva practice, device-local bookmarks and revision checks, and an offline cache on HTTPS or localhost. Regular-user sign-in uses Clerk. Administrator access is a separate PHP session and GitHub draft workflow; it does not use Clerk or an application database.
@@ -25,3 +26,6 @@ The local PHP CLI includes cURL and OpenSSL. Verify with `php -v` and `php -m`. 
 ## Content
 
 Edit `data/experiments.json` and `data/viva.json`. Keep these public files free of secrets. Local progress uses `aloka.*` keys in browser storage.
+=======
+# ALOKA
+>>>>>>> 7761592dae2acff9ed4f94b0cde6cd16658c26d6
