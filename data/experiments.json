@@ -1,0 +1,62 @@
+[
+  {
+    "id": "binary-search",
+    "title": "Binary search",
+    "subject": "Computer Science",
+    "level": "Algorithms",
+    "duration": "12 min",
+    "objective": "Find a target in a sorted list by repeatedly narrowing the search interval.",
+    "steps": [
+      "Set low and high to the first and last indexes.",
+      "Compare the middle value with the target.",
+      "Keep the half that can still contain the target.",
+      "Repeat until found or the interval is empty."
+    ],
+    "code": "",
+    "tags": [
+      "arrays",
+      "search",
+      "iteration"
+    ]
+  },
+  {
+    "id": "bubble-sort",
+    "title": "Bubble sort",
+    "subject": "Computer Science",
+    "level": "Algorithms",
+    "duration": "10 min",
+    "objective": "Sort values by comparing and swapping adjacent pairs until no pair is out of order.",
+    "steps": [
+      "Compare adjacent values from left to right.",
+      "Swap when the left value is greater.",
+      "Repeat until a full pass makes no swaps.",
+      "Explain why the largest remaining value moves to the end of a pass."
+    ],
+    "code": "",
+    "tags": [
+      "sorting",
+      "arrays",
+      "loops"
+    ]
+  },
+  {
+    "id": "ohms-law",
+    "title": "Ohm’s law verification",
+    "subject": "Electronics",
+    "level": "Basic circuits",
+    "duration": "15 min",
+    "objective": "Observe the relationship between voltage, current, and resistance in a resistive circuit.",
+    "steps": [
+      "Build a series circuit with a resistor and ammeter.",
+      "Measure voltage across the resistor and current through it.",
+      "Repeat at several safe supply settings.",
+      "Compare the measured ratio of voltage to current."
+    ],
+    "code": "",
+    "tags": [
+      "circuits",
+      "measurement",
+      "resistance"
+    ]
+  }
+]

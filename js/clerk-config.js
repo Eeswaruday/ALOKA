@@ -1,0 +1,1 @@
+window.ALOKA_CLERK_PUBLISHABLE_KEY = 'pk_test_ZnJhbmstdG9hZC04MjQ0LmNsZXJrLmFjY291bnRzLmRldiQ';
