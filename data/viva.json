@@ -1,6 +1,1 @@
-[
- {"subject":"Computer Science","question":"Why must binary search use sorted data?","answer":"Each comparison lets it discard half the remaining values. That is valid only when values are ordered."},
- {"subject":"Computer Science","question":"What is the time complexity of binary search?","answer":"O(log n), because the search interval is roughly halved after each comparison."},
- {"subject":"Computer Science","question":"Why can bubble sort stop early?","answer":"If a full pass makes no swaps, every adjacent pair is ordered, so the list is sorted."},
- {"subject":"Electronics","question":"What does Ohm’s law describe?","answer":"For an ideal resistor under constant physical conditions, voltage equals current multiplied by resistance: V = I × R."}
-]
+[]
