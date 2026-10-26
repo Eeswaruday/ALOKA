@@ -12,6 +12,7 @@ Open `index.html` directly for the landing page. Browsers restrict `fetch()` fro
 - Clerk's vanilla JavaScript SDK powers regular user sign-in. The app is linked to the ALOKA development instance; provider availability depends on its Clerk Dashboard settings. Production Clerk has not been configured.
 - The admin login UI and PHP API are implemented under `admin/` and `api/`. Admin access stays disabled until the PHP host has its environment configured. GitHub file changes are staged on a draft branch and merge to production only after explicit confirmation.
 - Follow [ADMIN_SETUP.md](ADMIN_SETUP.md) to configure the initial admin hash, private persistent storage, GitHub token, CORS origin, and deployment. Never put the admin hash or GitHub token in Vercel or frontend code.
+- Follow [DEPLOYMENT.md](DEPLOYMENT.md) for the static Vercel frontend, separate PHP backend, and environment variable placement.
 - `api/health.php` reports configuration booleans only. `.vercelignore` excludes PHP endpoints from the static Vercel deployment.
 - Resend is not used in the current login or password-change flow.
 
