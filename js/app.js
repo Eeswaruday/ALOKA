@@ -68,7 +68,7 @@
     const query = state.search.toLowerCase();
     const items = state.experiments.filter(item => [item.title, item.subject, item.category, item.tags || []].flat().join(' ').toLowerCase().includes(query)).slice(0, 3);
     if (!items.length) list.append(make('p', 'hero-no-results', state.experiments.length ? 'No matching experiments. Try another search.' : 'Published experiments will appear here.'));
-    items.forEach(item => { const button = make('button', 'hero-experiment', ''); button.type = 'button'; button.append(make('span', '', `${item.title}\n${item.language || ''}`), make('span', '', '↗')); button.addEventListener('click', () => openExperiment(item)); list.append(button); });
+    items.forEach(item => { const button = make('button', 'hero-experiment', ''); button.type = 'button'; button.append(make('span', 'hero-experiment-copy', item.title), make('small', 'hero-experiment-language', item.language || ''), make('span', 'hero-experiment-arrow', '↗')); button.addEventListener('click', () => openExperiment(item)); list.append(button); });
   }
   function renderQuestion() {
     const questions = state.experiments.flatMap(item => (item.vivaQuestions || []).filter(q => q && q.question && q.answer).map(q => ({ ...q, subject: item.subject, title: item.title })));
