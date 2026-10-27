@@ -187,7 +187,17 @@
   }
   async function publishFromForm() {
     if (!$('#experiment-form').reportValidity()) return;
-    const title = $('#experiment-title').value.trim();
+    const record = collectExperiment();
+    const existingDraft = byId(state.content.drafts, record.id);
+    const published = byId(state.content.published, record.id);
+    const sameAsPublished = published && record.title === published.title && record.language === published.language && record.sourceCode === published.sourceCode;
+    if (!existingDraft && published && sameAsPublished) return notice(`“${published.title}” is already published.`);
+    if (existingDraft && existingDraft.updatedAt !== $('#draft-updated-at').value) return notice('This draft changed after you opened it. Reopen the latest draft before publishing.', true);
+    if (existingDraft && (existingDraft.baseUpdatedAt || '') !== (published?.updatedAt || '')) return notice('The published experiment changed. Reopen the latest version before publishing.', true);
+    if (!existingDraft && $('#draft-updated-at').value) return notice('This draft was already published or removed. Refresh the experiment list before continuing.', true);
+    if (!existingDraft && published && $('#base-updated-at').value !== published.updatedAt) return notice('The published experiment changed. Reopen the latest version before publishing.', true);
+    if (!existingDraft && !published && $('#base-updated-at').value) return notice('The published experiment was removed. Refresh the experiment list before continuing.', true);
+    const title = record.title;
     if (!await confirmAction('Publish experiment?', `Publish “${title}” to the student catalogue now?`, 'Publish')) return;
     const draft = await saveDraft(false);
     if (draft) await publishDraft(draft.id, draft.updatedAt, true);
