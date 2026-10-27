@@ -6,6 +6,7 @@ try {
     admin_cors_and_session();
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $action = $_GET['action'] ?? '';
+
     if ($method === 'GET' && $action === 'csrf') {
         $_SESSION['admin_csrf'] ??= bin2hex(random_bytes(32));
         admin_json(['csrf' => $_SESSION['admin_csrf'], 'expired' => !empty($_SESSION['admin_expired'])]);
@@ -13,58 +14,56 @@ try {
     if ($method === 'GET' && $action === 'status') {
         if (empty($_SESSION['admin_email'])) admin_json(['authenticated' => false]);
         admin_require_auth(true);
-        $githubConnected = admin_env('GITHUB_TOKEN') !== '' && admin_env('GITHUB_REPOSITORY_OWNER') !== '' && admin_env('GITHUB_REPOSITORY_NAME') !== '';
-        admin_json(['authenticated' => true, 'email' => $_SESSION['admin_email'], 'must_change' => !empty($_SESSION['admin_must_change']), 'github_connected' => $githubConnected, 'csrf' => $_SESSION['admin_csrf'] ?? '']);
+        $connected = admin_env('GITHUB_TOKEN') !== '' && admin_env('GITHUB_REPOSITORY_OWNER') !== '' && admin_env('GITHUB_REPOSITORY_NAME') !== '';
+        admin_json(['authenticated' => true, 'email' => $_SESSION['admin_email'], 'must_change' => !empty($_SESSION['admin_must_change']), 'github_connected' => $connected, 'csrf' => $_SESSION['admin_csrf'] ?? '']);
     }
+    if ($method === 'GET' && $action === 'public-experiments') {
+        $published = array_values(array_filter(admin_catalog_read('experiments')['items'], static fn($item) => is_array($item) && ($item['status'] ?? '') === 'published'));
+        $subjects = admin_catalog_read('subjects')['items'];
+        $categories = admin_catalog_read('categories')['items'];
+        foreach ($published as $item) {
+            if (!empty($item['subject'])) $subjects[] = $item['subject'];
+            if (!empty($item['category'])) $categories[] = $item['category'];
+        }
+        admin_json(['experiments' => $published, 'subjects' => admin_unique_labels($subjects), 'categories' => admin_unique_labels($categories)]);
+    }
+
     if ($method === 'GET') {
         admin_require_auth();
-        [, , , $production, $draft] = admin_github_config();
-        if ($action === 'tree') {
-            $prefix = trim((string) ($_GET['path'] ?? ''), '/');
-            if ($prefix !== '') admin_repo_path($prefix);
-            $entries = [];
-            foreach (admin_tree($draft) as $entry) {
-                $path = (string) ($entry['path'] ?? '');
-                if ($prefix !== '' && !str_starts_with($path, $prefix . '/')) continue;
-                $rest = $prefix === '' ? $path : substr($path, strlen($prefix) + 1);
-                if ($rest === '') continue;
-                $parts = explode('/', $rest, 2);
-                if (count($parts) === 2) $entries['dir:' . $parts[0]] = ['type' => 'dir', 'name' => $parts[0], 'path' => $prefix === '' ? $parts[0] : $prefix . '/' . $parts[0]];
-                else $entries['file:' . $path] = ['type' => 'file', 'name' => $parts[0], 'path' => $path, 'size' => (int) ($entry['size'] ?? 0)];
+        if ($action === 'content') {
+            $published = array_values(array_filter(admin_catalog_read('experiments')['items'], static fn($item) => is_array($item) && ($item['status'] ?? '') === 'published'));
+            $drafts = admin_experiment_drafts_read();
+            $subjects = admin_catalog_read('subjects')['items'];
+            $categories = admin_catalog_read('categories')['items'];
+            foreach (array_merge($published, $drafts) as $item) {
+                if (!empty($item['subject'])) $subjects[] = $item['subject'];
+                if (!empty($item['category'])) $categories[] = $item['category'];
             }
-            uasort($entries, static fn($a, $b) => ($a['type'] === $b['type'] ? strcasecmp($a['name'], $b['name']) : ($a['type'] === 'dir' ? -1 : 1)));
-            admin_json(['entries' => array_values($entries), 'path' => $prefix]);
-        }
-        if ($action === 'count') {
-            $path = admin_repo_path((string) ($_GET['path'] ?? ''));
-            $files = array_filter(admin_tree($draft), static fn($entry) => ($entry['path'] ?? '') === $path || str_starts_with((string) ($entry['path'] ?? ''), $path . '/'));
-            admin_json(['count' => count($files)]);
-        }
-        if ($action === 'open') {
-            $path = admin_repo_path((string) ($_GET['path'] ?? ''));
-            admin_supported_text($path);
-            $file = admin_github('GET', admin_contents_endpoint($path, $draft));
-            $content = base64_decode((string) ($file['content'] ?? ''), true);
-            if ($content === false || strlen($content) > 2_000_000) throw new AdminApiError(413, 'This file is too large to open in the editor.');
-            admin_json(['path' => $path, 'content' => $content, 'sha' => $file['sha'] ?? null]);
+            usort($published, static fn($a, $b) => strcasecmp((string) ($a['title'] ?? ''), (string) ($b['title'] ?? '')));
+            usort($drafts, static fn($a, $b) => strcmp((string) ($b['updatedAt'] ?? ''), (string) ($a['updatedAt'] ?? '')));
+            admin_json([
+                'published' => $published,
+                'drafts' => $drafts,
+                'subjects' => admin_unique_labels($subjects),
+                'categories' => admin_unique_labels($categories),
+                'stats' => ['published' => count($published), 'drafts' => count($drafts), 'subjects' => count(admin_unique_labels($subjects)), 'categories' => count(admin_unique_labels($categories))],
+            ]);
         }
         if ($action === 'history') {
-            $path = isset($_GET['path']) && $_GET['path'] !== '' ? '&path=' . rawurlencode(admin_repo_path((string) $_GET['path'])) : '';
-            $commits = admin_github('GET', '/commits?sha=' . rawurlencode($production) . $path . '&per_page=30');
+            [, , , $production] = admin_github_config();
+            $commits = admin_github('GET', '/commits?sha=' . rawurlencode($production) . '&path=data/experiments.json&per_page=30');
             admin_json(['commits' => array_map(static fn($commit) => ['sha' => $commit['sha'] ?? '', 'message' => $commit['commit']['message'] ?? '', 'date' => $commit['commit']['author']['date'] ?? '', 'author' => $commit['commit']['author']['name'] ?? ''], $commits)]);
-        }
-        if ($action === 'preview') {
-            $comparison = admin_compare($production, $draft);
-            admin_json(['ahead_by' => (int) ($comparison['ahead_by'] ?? 0), 'behind_by' => (int) ($comparison['behind_by'] ?? 0), 'files' => array_map(static fn($file) => ['path' => $file['filename'] ?? '', 'status' => $file['status'] ?? 'modified', 'additions' => $file['additions'] ?? 0, 'deletions' => $file['deletions'] ?? 0], $comparison['files'] ?? [])]);
         }
         throw new AdminApiError(404, 'Unknown admin action.');
     }
+
     if ($method !== 'POST') throw new AdminApiError(405, 'Method not allowed.');
     admin_require_csrf();
+    $input = admin_read_json();
+
     if ($action === 'login') {
         admin_rate_check();
         [$email, $hash, $mustChange] = admin_credentials();
-        $input = admin_read_json();
         $submittedEmail = strtolower(trim((string) ($input['email'] ?? '')));
         $password = (string) ($input['password'] ?? '');
         if (strlen($password) > 1024 || !hash_equals($email, $submittedEmail) || !password_verify($password, $hash)) {
@@ -93,7 +92,6 @@ try {
     }
     if ($action === 'change-password') {
         admin_require_auth(true);
-        $input = admin_read_json();
         [, $currentHash] = admin_credentials();
         $current = (string) ($input['current_password'] ?? '');
         $next = (string) ($input['new_password'] ?? '');
@@ -107,86 +105,167 @@ try {
     }
 
     admin_require_auth();
-    $input = str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') ? admin_read_json() : [];
-    if ($action === 'init-drafts') {
-        admin_ensure_draft_branch();
-        admin_json(['ok' => true]);
+    if ($action === 'migrate-samples') {
+        $result = admin_remove_legacy_samples();
+        admin_json(['ok' => true, 'removed' => $result]);
     }
-    [, , , $production, $draft] = admin_github_config();
-
-    if ($action === 'save') {
-        $path = admin_repo_path((string) ($input['path'] ?? ''));
-        $content = (string) ($input['content'] ?? '');
-        if (strlen($content) > 2_000_000) throw new AdminApiError(413, 'File content exceeds the 2 MB limit.');
-        $saved = admin_save_draft($path, $content, (string) ($input['message'] ?? 'Update ' . basename($path)));
-        admin_json(['ok' => true, 'path' => $path, 'commit' => $saved['commit']['sha'] ?? '']);
+    if ($action === 'save-experiment') {
+        if (!is_array($input['experiment'] ?? null)) throw new AdminApiError(400, 'Experiment details are invalid.');
+        $record = admin_validate_experiment($input['experiment']);
+        $submittedBase = (string) ($input['baseUpdatedAt'] ?? '');
+        $expectedDraft = (string) ($input['draftUpdatedAt'] ?? '');
+        $published = admin_catalog_read('experiments')['items'];
+        $live = null;
+        foreach ($published as $item) if (is_array($item) && ($item['id'] ?? '') === $record['id'] && ($item['status'] ?? '') === 'published') { $live = $item; break; }
+        $result = admin_experiment_drafts_update(static function (array $drafts) use ($record, $submittedBase, $expectedDraft, $live): array {
+            $index = null;
+            foreach ($drafts as $i => $item) if (($item['id'] ?? '') === $record['id']) { $index = $i; break; }
+            $existing = $index === null ? null : $drafts[$index];
+            if ($existing !== null && ($existing['updatedAt'] ?? '') !== $expectedDraft) throw new AdminApiError(409, 'This draft changed elsewhere. Reload it before saving.');
+            if ($existing === null && $expectedDraft !== '') throw new AdminApiError(409, 'This draft no longer exists. Refresh the draft list.');
+            if ($live !== null) {
+                $base = (string) ($existing['baseUpdatedAt'] ?? $submittedBase);
+                if ($base === '' || $base !== (string) ($live['updatedAt'] ?? '')) throw new AdminApiError(409, 'The published experiment changed. Reload it before saving a draft.');
+                $createdAt = (string) ($live['createdAt'] ?? gmdate(DATE_ATOM));
+            } else {
+                if ($submittedBase !== '' || !empty($existing['baseUpdatedAt'])) throw new AdminApiError(409, 'The published experiment was removed. Refresh before saving.');
+                $base = '';
+                $createdAt = (string) ($existing['createdAt'] ?? gmdate(DATE_ATOM));
+                foreach ($drafts as $item) if (($item['id'] ?? '') === $record['id'] && $index === null) throw new AdminApiError(409, 'An experiment already uses this identifier.');
+            }
+            $record['status'] = 'draft';
+            $record['createdAt'] = $createdAt;
+            $record['updatedAt'] = gmdate(DATE_ATOM);
+            $record['baseUpdatedAt'] = $base;
+            if ($index === null) $drafts[] = $record; else $drafts[$index] = $record;
+            return [$drafts, $record];
+        });
+        admin_json(['ok' => true, 'experiment' => $result]);
     }
-    if ($action === 'delete') {
-        $path = admin_repo_path((string) ($input['path'] ?? ''));
-        admin_ensure_draft_branch();
-        $files = array_values(array_filter(admin_tree($draft), static fn($entry) => ($entry['path'] ?? '') === $path || str_starts_with((string) ($entry['path'] ?? ''), $path . '/')));
-        if (!$files) throw new AdminApiError(404, 'No draft files match this path.');
-        if (count($files) > 100) throw new AdminApiError(413, 'This folder has more than 100 files. Split the deletion into smaller folders.');
-        if ((int) ($input['confirm_count'] ?? -1) !== count($files)) throw new AdminApiError(409, 'The folder contents changed. Refresh the file list and confirm again.');
-        foreach ($files as $entry) {
-            $file = admin_github('GET', admin_contents_endpoint($entry['path'], $draft));
-            admin_github('DELETE', '/contents/' . implode('/', array_map('rawurlencode', explode('/', $entry['path']))), ['message' => 'Stage deletion of ' . $entry['path'], 'sha' => $file['sha'], 'branch' => $draft]);
+    if ($action === 'publish-experiment') {
+        $id = strtolower(trim((string) ($input['id'] ?? '')));
+        $expectedDraft = (string) ($input['draftUpdatedAt'] ?? '');
+        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $id) || $expectedDraft === '') throw new AdminApiError(400, 'Draft identifier is invalid.');
+        $drafts = admin_experiment_drafts_read();
+        $draft = null;
+        foreach ($drafts as $item) if (($item['id'] ?? '') === $id) { $draft = $item; break; }
+        if (!$draft || ($draft['updatedAt'] ?? '') !== $expectedDraft) throw new AdminApiError(409, 'This draft changed or no longer exists. Refresh and retry.');
+        $collection = admin_catalog_read('experiments');
+        $liveIndex = null;
+        foreach ($collection['items'] as $i => $item) if (is_array($item) && ($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'published') { $liveIndex = $i; break; }
+        $base = (string) ($draft['baseUpdatedAt'] ?? '');
+        if ($base === '' && $liveIndex !== null) throw new AdminApiError(409, 'An experiment with this identifier is already published.');
+        if ($base !== '' && ($liveIndex === null || (string) ($collection['items'][$liveIndex]['updatedAt'] ?? '') !== $base)) throw new AdminApiError(409, 'The published experiment changed. Reload before publishing.');
+        $publishedRecord = $draft;
+        unset($publishedRecord['baseUpdatedAt']);
+        $publishedRecord['status'] = 'published';
+        $publishedRecord['updatedAt'] = gmdate(DATE_ATOM);
+        if ($liveIndex === null) $publishedRecord['publishedAt'] = $publishedRecord['updatedAt'];
+        else $publishedRecord['publishedAt'] = $collection['items'][$liveIndex]['publishedAt'] ?? $publishedRecord['updatedAt'];
+        if ($liveIndex === null) $collection['items'][] = $publishedRecord; else $collection['items'][$liveIndex] = $publishedRecord;
+        $saved = admin_catalog_write('experiments', $collection['items'], $collection['sha'], 'Publish experiment: ' . $publishedRecord['title']);
+        $cleanup = true;
+        try {
+            admin_experiment_drafts_update(static function (array $items) use ($id, $expectedDraft): array {
+                $next = array_values(array_filter($items, static fn($item) => ($item['id'] ?? '') !== $id || ($item['updatedAt'] ?? '') !== $expectedDraft));
+                return [$next, null];
+            });
+        } catch (Throwable) { $cleanup = false; }
+        admin_json(['ok' => true, 'commit' => $saved['commit']['sha'] ?? '', 'draft_cleared' => $cleanup]);
+    }
+    if ($action === 'delete-experiment') {
+        $id = strtolower(trim((string) ($input['id'] ?? '')));
+        $source = (string) ($input['source'] ?? '');
+        $confirmTitle = trim((string) ($input['confirmTitle'] ?? ''));
+        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $id) || !in_array($source, ['draft', 'published'], true)) throw new AdminApiError(400, 'Experiment selection is invalid.');
+        $drafts = admin_experiment_drafts_read();
+        if ($source === 'published') {
+            $collection = admin_catalog_read('experiments');
+            $liveIndex = null;
+            foreach ($collection['items'] as $i => $item) if (is_array($item) && ($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'published') { $liveIndex = $i; break; }
+            if ($liveIndex === null) throw new AdminApiError(404, 'Published experiment was not found.');
+            if (!hash_equals((string) ($collection['items'][$liveIndex]['title'] ?? ''), $confirmTitle)) throw new AdminApiError(400, 'Confirm the experiment title before deleting it.');
+            array_splice($collection['items'], $liveIndex, 1);
+            $saved = admin_catalog_write('experiments', $collection['items'], $collection['sha'], 'Delete experiment: ' . $confirmTitle);
+            $commit = $saved['commit']['sha'] ?? '';
+        } else {
+            $exists = false;
+            foreach ($drafts as $item) if (($item['id'] ?? '') === $id) { $exists = true; if (!hash_equals((string) ($item['title'] ?? ''), $confirmTitle)) throw new AdminApiError(400, 'Confirm the experiment title before deleting it.'); }
+            if (!$exists) throw new AdminApiError(404, 'Draft experiment was not found.');
+            $commit = '';
         }
-        admin_json(['ok' => true, 'deleted_files' => count($files)]);
+        admin_experiment_drafts_update(static function (array $items) use ($id): array {
+            return [array_values(array_filter($items, static fn($item) => ($item['id'] ?? '') !== $id)), null];
+        });
+        admin_json(['ok' => true, 'commit' => $commit]);
     }
-    if ($action === 'upload') {
-        admin_ensure_draft_branch();
-        $base = trim((string) ($_POST['path'] ?? ''), '/');
-        if ($base !== '') admin_repo_path($base);
-        $names = $_FILES['files']['name'] ?? [];
-        $temps = $_FILES['files']['tmp_name'] ?? [];
-        $errors = $_FILES['files']['error'] ?? [];
-        $sizes = $_FILES['files']['size'] ?? [];
-        $fullPaths = $_FILES['files']['full_path'] ?? [];
-        if (!is_array($names) || count($names) === 0 || count($names) > 25 || array_sum($sizes) > 10_000_000) throw new AdminApiError(400, 'Upload up to 25 files and 10 MB per batch.');
-        $uploaded = [];
-        foreach ($names as $i => $name) {
-            if (($errors[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || ($sizes[$i] ?? 0) > 2_000_000) throw new AdminApiError(413, 'Each upload must be smaller than 2 MB.');
-            $relativeName = is_array($fullPaths) ? ($fullPaths[$i] ?? $name) : $name;
-            $relative = str_replace('\\', '/', (string) $relativeName);
-            $path = admin_repo_path($base === '' ? $relative : $base . '/' . $relative);
-            admin_supported_text($path);
-            $content = file_get_contents($temps[$i]);
-            if ($content === false || str_contains($content, "\0")) throw new AdminApiError(415, 'Only text files can be uploaded.');
-            $uploaded[] = admin_save_draft($path, $content, 'Stage upload of ' . basename($path))['content']['path'] ?? $path;
+    if ($action === 'manage-taxonomy') {
+        $kind = (string) ($input['kind'] ?? '');
+        $operation = (string) ($input['operation'] ?? '');
+        $label = trim((string) ($input['label'] ?? ''));
+        if (!in_array($kind, ['subjects', 'categories'], true) || !in_array($operation, ['add', 'remove'], true) || $label === '' || strlen($label) > 100 || preg_match('/[\x00-\x1F]/', $label)) throw new AdminApiError(400, 'Subject or category details are invalid.');
+        $collection = admin_catalog_read($kind);
+        $items = admin_unique_labels($collection['items']);
+        if ($operation === 'add') {
+            if (in_array(strtolower($label), array_map('strtolower', $items), true)) throw new AdminApiError(409, 'That subject or category already exists.');
+            $items[] = $label;
+        } else {
+            if (!in_array($label, $items, true)) throw new AdminApiError(404, 'That subject or category was not found.');
+            $field = $kind === 'subjects' ? 'subject' : 'category';
+            $published = admin_catalog_read('experiments')['items'];
+            $drafts = admin_experiment_drafts_read();
+            foreach (array_merge($published, $drafts) as $record) if (is_array($record) && strcasecmp((string) ($record[$field] ?? ''), $label) === 0) throw new AdminApiError(409, 'This value is still used by an experiment.');
+            $items = array_values(array_filter($items, static fn($item) => $item !== $label));
         }
-        admin_json(['ok' => true, 'files' => $uploaded]);
-    }
-    if ($action === 'preview') {
-        $comparison = admin_compare($production, $draft);
-        admin_json(['ahead_by' => (int) ($comparison['ahead_by'] ?? 0), 'behind_by' => (int) ($comparison['behind_by'] ?? 0), 'files' => array_map(static fn($file) => ['path' => $file['filename'] ?? '', 'status' => $file['status'] ?? 'modified'], $comparison['files'] ?? [])]);
-    }
-    if ($action === 'publish') {
-        $comparison = admin_compare($production, $draft);
-        if (empty($comparison['ahead_by'])) throw new AdminApiError(409, 'There are no draft changes to publish.');
-        if (!is_array($input['confirm_paths'] ?? null)) throw new AdminApiError(400, 'Review and confirm the affected files before publishing.');
-        $paths = array_map(static fn($file) => $file['filename'] ?? '', $comparison['files'] ?? []);
-        sort($paths); $confirmed = $input['confirm_paths']; sort($confirmed);
-        if ($paths !== $confirmed) throw new AdminApiError(409, 'The draft changed. Review the current file list and confirm again.');
-        $merge = admin_github('POST', '/merges', ['base' => $production, 'head' => $draft, 'commit_message' => 'Publish ALOKA admin drafts']);
-        admin_json(['ok' => true, 'commit' => $merge['sha'] ?? '']);
-    }
-    if ($action === 'restore') {
-        $path = admin_repo_path((string) ($input['path'] ?? ''));
-        $sha = (string) ($input['sha'] ?? '');
-        if (!preg_match('/^[a-f0-9]{40}$/i', $sha)) throw new AdminApiError(400, 'Commit reference is invalid.');
-        admin_supported_text($path);
-        $file = admin_github('GET', admin_contents_endpoint($path, $sha));
-        $content = base64_decode((string) ($file['content'] ?? ''), true);
-        if ($content === false || strlen($content) > 2_000_000) throw new AdminApiError(413, 'This file cannot be restored through the editor.');
-        $saved = admin_save_draft($path, $content, 'Stage restore of ' . $path . ' from ' . substr($sha, 0, 7));
-        admin_json(['ok' => true, 'path' => $path, 'commit' => $saved['commit']['sha'] ?? '']);
+        $saved = admin_catalog_write($kind, $items, $collection['sha'], ucfirst(rtrim($kind, 's')) . ' ' . $operation . ': ' . $label);
+        admin_json(['ok' => true, 'items' => $items, 'commit' => $saved['commit']['sha'] ?? '']);
     }
     throw new AdminApiError(404, 'Unknown admin action.');
 } catch (AdminApiError $error) {
     admin_json(['error' => $error->getMessage()], $error->httpStatus);
 } catch (Throwable) {
     admin_json(['error' => 'The admin request could not be completed. Check the PHP server configuration.'], 500);
+}
+
+function admin_unique_labels(array $items): array
+{
+    $labels = [];
+    foreach ($items as $item) {
+        if (!is_string($item)) continue;
+        $item = trim($item);
+        if ($item !== '' && strlen($item) <= 100 && !in_array(strtolower($item), array_map('strtolower', $labels), true)) $labels[] = $item;
+    }
+    natcasesort($labels);
+    return array_values($labels);
+}
+
+function admin_remove_legacy_samples(): int
+{
+    $marker = admin_private_dir() . DIRECTORY_SEPARATOR . 'legacy-samples-cleaned';
+    if (is_file($marker)) return 0;
+    $removed = 0;
+    $experiments = admin_catalog_read('experiments');
+    $sampleIds = ['binary-search', 'bubble-sort', 'ohms-law'];
+    $sampleTitles = ['binary search', 'bubble sort', 'ohm’s law verification', "ohm's law verification"];
+    $clean = array_values(array_filter($experiments['items'], static function ($item) use (&$removed, $sampleIds, $sampleTitles): bool {
+        if (!is_array($item)) return true;
+        $id = strtolower((string) ($item['id'] ?? $item['slug'] ?? ''));
+        $title = strtolower(trim((string) ($item['title'] ?? '')));
+        if (in_array($id, $sampleIds, true) || in_array($title, $sampleTitles, true)) { $removed++; return false; }
+        return true;
+    }));
+    if ($removed > 0) admin_catalog_write('experiments', $clean, $experiments['sha'], 'Remove legacy demonstration experiments');
+    $viva = admin_catalog_read('viva');
+    $vivaClean = array_values(array_filter($viva['items'], static function ($item) use (&$removed): bool {
+        if (!is_array($item)) return true;
+        $question = strtolower((string) ($item['question'] ?? ''));
+        if (str_contains($question, 'binary search') || str_contains($question, 'bubble sort') || str_contains($question, 'ohm')) { $removed++; return false; }
+        return true;
+    }));
+    if (count($vivaClean) !== count($viva['items'])) admin_catalog_write('viva', $vivaClean, $viva['sha'], 'Remove legacy demonstration viva questions');
+    if (file_put_contents($marker, '1', LOCK_EX) === false) throw new AdminApiError(503, 'Legacy cleanup could not be recorded.');
+    @chmod($marker, 0600);
+    return $removed;
 }
 
 function admin_rate_check_clear(): void

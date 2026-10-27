@@ -244,11 +244,13 @@ function admin_github(string $method, string $endpoint, ?array $body = null): ar
             'Content-Type: application/json',
         ],
     ]);
+    if (PHP_OS_FAMILY === 'Windows' && !ini_get('curl.cainfo') && defined('CURLSSLOPT_NATIVE_CA')) {
+        curl_setopt($curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+    }
     if ($body !== null) curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     $response = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $error = curl_error($curl);
-    curl_close($curl);
     if ($response === false) throw new AdminApiError(502, $error !== '' ? 'GitHub could not be reached.' : 'GitHub request failed.');
     $data = json_decode($response, true);
     if ($status < 200 || $status >= 300) {
@@ -258,75 +260,139 @@ function admin_github(string $method, string $endpoint, ?array $body = null): ar
     return is_array($data) ? $data : [];
 }
 
-function admin_repo_path(string $path): string
-{
-    $path = trim($path);
-    if ($path === '' || strlen($path) > 500 || str_contains($path, "\0") || str_contains($path, '\\') || str_starts_with($path, '/') || preg_match('/(^|\/)\.{1,2}(\/|$)/', $path)) {
-        throw new AdminApiError(400, 'Repository path is invalid.');
-    }
-    $parts = explode('/', $path);
-    foreach ($parts as $part) {
-        if ($part === '' || $part === '.git' || preg_match('/[<>:"|?*\x00-\x1F]/', $part)) throw new AdminApiError(400, 'Repository path is invalid.');
-    }
-    return $path;
-}
-
-function admin_supported_text(string $path): void
-{
-    if (!preg_match('/\.(html?|css|js|mjs|cjs|json|md|txt|xml|svg|ya?ml|toml|csv|sql|php|sh|py|java|c|h|cpp|hpp|ts|tsx|jsx)$/i', $path)) {
-        throw new AdminApiError(415, 'This file type cannot be opened in the code editor.');
-    }
-}
-
-function admin_branch_ref(string $branch): string
-{
-    try {
-        return (string) admin_github('GET', '/git/ref/heads/' . rawurlencode($branch))['object']['sha'];
-    } catch (AdminApiError $error) {
-        if ($error->httpStatus !== 404) throw $error;
-        throw $error;
-    }
-}
-
-function admin_ensure_draft_branch(): void
-{
-    [, , , $production, $draft] = admin_github_config();
-    try { admin_branch_ref($draft); return; } catch (AdminApiError $error) { if ($error->httpStatus !== 404) throw $error; }
-    $sha = admin_branch_ref($production);
-    admin_github('POST', '/git/refs', ['ref' => 'refs/heads/' . $draft, 'sha' => $sha]);
-}
-
 function admin_contents_endpoint(string $path, string $branch): string
 {
     $encoded = implode('/', array_map('rawurlencode', explode('/', $path)));
     return '/contents/' . $encoded . '?ref=' . rawurlencode($branch);
 }
 
-function admin_tree(string $branch): array
+function admin_catalog_read(string $name): array
 {
-    $sha = admin_branch_ref($branch);
-    $tree = admin_github('GET', '/git/trees/' . rawurlencode($sha) . '?recursive=1');
-    if (!empty($tree['truncated'])) throw new AdminApiError(502, 'Repository is too large to list safely.');
-    return array_values(array_filter($tree['tree'] ?? [], static fn($entry) => ($entry['type'] ?? '') === 'blob'));
+    if (!in_array($name, ['experiments', 'subjects', 'categories', 'viva'], true)) throw new AdminApiError(400, 'Content collection is invalid.');
+    [, , , $production] = admin_github_config();
+    try {
+        $file = admin_github('GET', admin_contents_endpoint('data/' . $name . '.json', $production));
+    } catch (AdminApiError $error) {
+        if ($error->httpStatus === 404) return ['items' => [], 'sha' => null];
+        throw $error;
+    }
+    $content = base64_decode(preg_replace('/\s+/', '', (string) ($file['content'] ?? '')), true);
+    $items = $content === false ? null : json_decode($content, true);
+    if (!is_array($items) || !array_is_list($items)) throw new AdminApiError(502, 'Published content is not a valid JSON list.');
+    return ['items' => $items, 'sha' => (string) ($file['sha'] ?? '')];
 }
 
-function admin_save_draft(string $path, string $content, string $message): array
+function admin_catalog_write(string $name, array $items, ?string $expectedSha, string $message): array
 {
-    admin_repo_path($path); admin_supported_text($path); admin_ensure_draft_branch();
-    if (str_contains($content, "\0")) throw new AdminApiError(415, 'Binary files cannot be edited in the text editor.');
-    [, , , , $draft] = admin_github_config();
-    $sha = null;
-    try { $current = admin_github('GET', admin_contents_endpoint($path, $draft)); $sha = $current['sha'] ?? null; } catch (AdminApiError $error) { if ($error->httpStatus !== 404) throw $error; }
-    $message = preg_match('//u', $message) ? $message : 'Update ' . basename($path);
-    $message = preg_replace('/^(.{0,120}).*$/us', '$1', $message) ?: 'Update ' . basename($path);
-    $body = ['message' => $message, 'content' => base64_encode($content), 'branch' => $draft];
-    if ($sha) $body['sha'] = $sha;
-    return admin_github('PUT', '/contents/' . implode('/', array_map('rawurlencode', explode('/', $path))), $body);
+    if (!in_array($name, ['experiments', 'subjects', 'categories', 'viva'], true)) throw new AdminApiError(400, 'Content collection is invalid.');
+    $current = admin_catalog_read($name);
+    if ($current['sha'] !== $expectedSha) throw new AdminApiError(409, 'This content changed elsewhere. Refresh before saving again.');
+    [, , , $production] = admin_github_config();
+    $content = json_encode($items, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
+    if (strlen($content) > 2_000_000) throw new AdminApiError(413, 'Content exceeds the 2 MB limit.');
+    $body = ['message' => substr($message, 0, 120), 'content' => base64_encode($content), 'branch' => $production];
+    if ($current['sha'] !== null) $body['sha'] = $current['sha'];
+    return admin_github('PUT', '/contents/data/' . $name . '.json', $body);
 }
 
-function admin_compare(string $production, string $draft): array
+function admin_experiment_drafts_read(): array
 {
-    $comparison = admin_github('GET', '/compare/' . rawurlencode($production) . '...' . rawurlencode($draft));
-    if (count($comparison['files'] ?? []) >= 300) throw new AdminApiError(413, 'GitHub limits the review list to 300 files. Reduce the draft set before publishing.');
-    return $comparison;
+    $path = admin_private_dir() . DIRECTORY_SEPARATOR . 'experiment-drafts.json';
+    if (!is_file($path)) return [];
+    $items = json_decode(file_get_contents($path) ?: '', true);
+    if (!is_array($items) || !array_is_list($items)) throw new AdminApiError(503, 'Private experiment drafts could not be read.');
+    return $items;
+}
+
+function admin_experiment_drafts_update(callable $update): mixed
+{
+    $path = admin_private_dir() . DIRECTORY_SEPARATOR . 'experiment-drafts.json';
+    $lock = fopen($path . '.lock', 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) throw new AdminApiError(503, 'Private experiment drafts are unavailable.');
+    @chmod($path . '.lock', 0600);
+    try {
+        $drafts = is_file($path) ? json_decode(file_get_contents($path) ?: '', true) : [];
+        if (!is_array($drafts) || !array_is_list($drafts)) throw new AdminApiError(503, 'Private experiment drafts could not be read.');
+        [$next, $result] = $update($drafts);
+        $json = json_encode($next, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
+        $temp = $path . '.' . bin2hex(random_bytes(5)) . '.tmp';
+        if (file_put_contents($temp, $json, LOCK_EX) === false || !rename($temp, $path)) {
+            @unlink($temp);
+            throw new AdminApiError(503, 'Private experiment drafts could not be saved.');
+        }
+        @chmod($path, 0600);
+        return $result;
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
+function admin_experiment_text(array $input, string $field, int $limit, bool $required = false): string
+{
+    $value = $input[$field] ?? '';
+    if (!is_string($value)) throw new AdminApiError(400, ucfirst($field) . ' must be text.');
+    if (strlen($value) > $limit || str_contains($value, "\0")) throw new AdminApiError(400, ucfirst($field) . ' is too long or contains invalid characters.');
+    if ($required && trim($value) === '') throw new AdminApiError(400, ucfirst($field) . ' is required.');
+    return $required ? trim($value) : $value;
+}
+
+function admin_experiment_list_field(array $input, string $field, int $itemsLimit, int $textLimit): array
+{
+    $values = $input[$field] ?? [];
+    if (!is_array($values) || count($values) > $itemsLimit) throw new AdminApiError(400, ucfirst($field) . ' list is invalid.');
+    $clean = [];
+    foreach ($values as $value) {
+        if (!is_string($value) || strlen($value) > $textLimit || str_contains($value, "\0")) throw new AdminApiError(400, ucfirst($field) . ' contains invalid text.');
+        $value = trim($value);
+        if ($value !== '' && !in_array($value, $clean, true)) $clean[] = $value;
+    }
+    return $clean;
+}
+
+function admin_validate_experiment(array $input): array
+{
+    $id = strtolower(trim(admin_experiment_text($input, 'id', 100, true)));
+    $slug = strtolower(trim(admin_experiment_text($input, 'slug', 100, true)));
+    if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $id) || $slug !== $id) throw new AdminApiError(400, 'Use the unique slug as the experiment identifier.');
+    $questions = $input['vivaQuestions'] ?? [];
+    if (!is_array($questions) || count($questions) > 100) throw new AdminApiError(400, 'Viva question list is invalid.');
+    $viva = [];
+    foreach ($questions as $question) {
+        if (!is_array($question)) throw new AdminApiError(400, 'Viva question entry is invalid.');
+        $viva[] = [
+            'question' => trim(admin_experiment_text($question, 'question', 2000, true)),
+            'answer' => trim(admin_experiment_text($question, 'answer', 5000, true)),
+            'difficulty' => trim(admin_experiment_text($question, 'difficulty', 40)),
+            'topic' => trim(admin_experiment_text($question, 'topic', 100)),
+        ];
+    }
+    $sourceCode = admin_experiment_text($input, 'sourceCode', 1_500_000);
+    if (trim($sourceCode) === '') throw new AdminApiError(400, 'Source code is required.');
+    $record = [
+        'id' => $id,
+        'slug' => $slug,
+        'title' => trim(admin_experiment_text($input, 'title', 160, true)),
+        'subject' => trim(admin_experiment_text($input, 'subject', 100)),
+        'category' => trim(admin_experiment_text($input, 'category', 100)),
+        'aim' => trim(admin_experiment_text($input, 'aim', 5000)),
+        'description' => trim(admin_experiment_text($input, 'description', 1500)),
+        'language' => trim(admin_experiment_text($input, 'language', 60, true)),
+        'sourceCode' => $sourceCode,
+        'experimentNumber' => trim(admin_experiment_text($input, 'experimentNumber', 60)),
+        'difficulty' => trim(admin_experiment_text($input, 'difficulty', 40)),
+        'prerequisites' => admin_experiment_list_field($input, 'prerequisites', 30, 300),
+        'algorithm' => trim(admin_experiment_text($input, 'algorithm', 8000)),
+        'procedure' => admin_experiment_list_field($input, 'procedure', 80, 1000),
+        'explanation' => trim(admin_experiment_text($input, 'explanation', 12000)),
+        'expectedOutput' => admin_experiment_text($input, 'expectedOutput', 8000),
+        'sampleInput' => admin_experiment_text($input, 'sampleInput', 4000),
+        'sampleOutput' => admin_experiment_text($input, 'sampleOutput', 4000),
+        'timeComplexity' => trim(admin_experiment_text($input, 'timeComplexity', 100)),
+        'spaceComplexity' => trim(admin_experiment_text($input, 'spaceComplexity', 100)),
+        'referenceNotes' => trim(admin_experiment_text($input, 'referenceNotes', 6000)),
+        'tags' => admin_experiment_list_field($input, 'tags', 40, 60),
+        'vivaQuestions' => $viva,
+    ];
+    return $record;
 }
