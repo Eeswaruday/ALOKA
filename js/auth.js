@@ -3,6 +3,8 @@
   const status = document.querySelector('#auth-status');
   const buttons = ['#nav-signin', '#signin', '#signup'].map(selector => document.querySelector(selector));
   let userButtonMounted = false;
+  let clerkDomain = '';
+  let clerkPromise;
 
   function setSignedIn(user) {
     const signedIn = Boolean(user);
@@ -35,11 +37,20 @@
   }
 
   async function openAuth(kind) {
-    if (!publishableKey || !window.Clerk) {
-      if (status) status.textContent = 'Add your Clerk publishable key in js/clerk-config.js to enable sign-in.';
+    if (!publishableKey || !clerkDomain) {
+      if (status) status.textContent = publishableKey ? 'Clerk sign-in requires HTTPS and a valid configuration.' : 'Add your Clerk publishable key in js/clerk-config.js to enable sign-in.';
       return;
     }
     try {
+      if (!window.Clerk) {
+        clerkPromise ||= (async () => {
+          await loadScript(`https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`);
+          await loadScript(`https://${clerkDomain}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, publishableKey);
+          await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+          window.Clerk.addListener(({ user }) => { if (user !== undefined) setSignedIn(user); });
+        })().catch(error => { clerkPromise = undefined; throw error; });
+        await clerkPromise;
+      }
       await window.Clerk[kind]();
     } catch {
       if (status) status.textContent = 'Clerk sign-in could not open. Check the Clerk dashboard configuration.';
@@ -61,7 +72,6 @@
   }
 
   const encodedDomain = publishableKey.split('_')[2];
-  let clerkDomain;
   try {
     clerkDomain = atob(encodedDomain.replace(/-/g, '+').replace(/_/g, '/')).replace(/\$$/, '');
     if (!/^[a-z0-9.-]+$/i.test(clerkDomain)) throw new Error('Invalid domain');
@@ -70,15 +80,5 @@
     return;
   }
 
-  (async () => {
-    try {
-      await loadScript(`https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`);
-      await loadScript(`https://${clerkDomain}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, publishableKey);
-      await window.Clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
-      window.Clerk.addListener(({ user }) => { if (user !== undefined) setSignedIn(user); });
-    } catch {
-      if (status) status.textContent = 'Clerk could not load. Guest browsing remains available.';
-    }
-  })();
 })();
 

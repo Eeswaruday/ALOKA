@@ -133,6 +133,7 @@
   }
   async function init() {
     setup();
+    renderHero();
     try {
       let result;
       if (apiUrl) {
