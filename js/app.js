@@ -1,6 +1,6 @@
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
-  const state = { experiments: [], subjects: [], questionIndex: 0, search: '', savedOnly: false, selectedSubject: '' };
+  const state = { experiments: [], subjects: [], questionIndex: 0, search: '', savedOnly: false, selectedSubject: '', heroSubject: '' };
   const defaultSubjects = ['DL (Deep Learning Lab)', 'FLUTTER Lab', 'NLP Lab', 'FSD-2 Lab'];
   const apiSetting = (window.ALOKA_API_URL || '').trim();
   const localPhp = ['localhost', '127.0.0.1'].includes(location.hostname) && location.port === '8000';
@@ -90,11 +90,18 @@
     const list = $('#hero-experiments'); list.replaceChildren();
     const query = state.search.toLowerCase();
     if (!query) {
+      if (state.heroSubject) {
+        const back = make('button', 'hero-subject-back', '← All subjects'); back.type = 'button'; back.addEventListener('click', () => { state.heroSubject = ''; renderHero(); }); list.append(back);
+        const items = state.experiments.filter(item => item.subject === state.heroSubject).sort((a, b) => String(a.experimentNumber || '').localeCompare(String(b.experimentNumber || ''), undefined, { numeric: true, sensitivity: 'base' }) || a.title.localeCompare(b.title));
+        if (!items.length) list.append(make('p', 'hero-no-results', 'No published experiments in this subject yet.'));
+        items.forEach(item => { const button = make('button', 'hero-experiment', ''); button.type = 'button'; button.append(make('span', 'hero-experiment-copy', item.title), make('small', 'hero-experiment-language', item.language || ''), make('span', 'hero-experiment-arrow', '↗')); button.addEventListener('click', () => openExperiment(item)); list.append(button); });
+        return;
+      }
       const subjects = [...new Set([...defaultSubjects, ...state.subjects, ...state.experiments.map(item => item.subject).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
       subjects.forEach(subject => {
         const count = state.experiments.filter(item => item.subject === subject).length;
         const button = make('button', 'hero-experiment hero-subject', ''); button.type = 'button'; button.append(make('span', 'hero-experiment-copy', subject), make('small', 'hero-experiment-language', `${count} ${count === 1 ? 'experiment' : 'experiments'}`), make('span', 'hero-experiment-arrow', '↗'));
-        button.addEventListener('click', () => { state.selectedSubject = subject; renderLibrary(); $('#experiments').scrollIntoView({ behavior: 'smooth' }); if (location.hash !== '#experiments') location.hash = 'experiments'; }); list.append(button);
+        button.setAttribute('aria-expanded', 'false'); button.addEventListener('click', () => { state.heroSubject = subject; renderHero(); }); list.append(button);
       });
       return;
     }
