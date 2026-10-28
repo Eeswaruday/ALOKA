@@ -373,7 +373,7 @@ function admin_validate_experiment(array $input): array
         'id' => $id,
         'slug' => $slug,
         'title' => trim(admin_experiment_text($input, 'title', 160, true)),
-        'subject' => trim(admin_experiment_text($input, 'subject', 100)),
+        'subject' => admin_experiment_text($input, 'subject', 100, true),
         'category' => trim(admin_experiment_text($input, 'category', 100)),
         'aim' => trim(admin_experiment_text($input, 'aim', 5000)),
         'description' => trim(admin_experiment_text($input, 'description', 1500)),

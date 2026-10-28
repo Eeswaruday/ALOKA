@@ -122,14 +122,17 @@
   async function loadContent() {
     const result = await request('content');
     state.content = result;
+    const subjects = $('#experiment-subject');
+    (result.subjects || []).forEach(subject => { if (![...subjects.options].some(option => option.value === subject)) subjects.add(new Option(subject, subject), subjects.options.length - 1); });
     renderContent();
   }
   function collectExperiment() {
     const title = $('#experiment-title').value.trim();
+    const subject = $('#experiment-subject').value === '__other__' ? $('#experiment-subject-other').value.trim() : $('#experiment-subject').value;
     const slug = $('#experiment-slug').value || slugify(title) || `experiment-${crypto.randomUUID()}`;
     $('#experiment-slug').value = slug;
     $('#experiment-id').value ||= slug;
-    return { id: $('#experiment-id').value, slug, title, language: $('#experiment-language').value, sourceCode: $('#experiment-code').value };
+    return { id: $('#experiment-id').value, slug, title, subject, experimentNumber: $('#experiment-number').value.trim(), language: $('#experiment-language').value, sourceCode: $('#experiment-code').value };
   }
   function fillExperiment(record) {
     const form = $('#experiment-form');
@@ -139,6 +142,15 @@
     $('#draft-updated-at').value = record.status === 'draft' ? record.updatedAt || '' : '';
     $('#experiment-slug').value = record.slug || record.id || '';
     $('#experiment-title').value = record.title || '';
+    const subjectSelect = $('#experiment-subject');
+    const subject = record.subject || '';
+    if (subject && ![...subjectSelect.options].some(option => option.value === subject)) subjectSelect.add(new Option(subject, subject));
+    subjectSelect.value = subject || '';
+    if (subjectSelect.value !== subject && subject) { subjectSelect.value = '__other__'; $('#experiment-subject-other').value = subject; }
+    else $('#experiment-subject-other').value = '';
+    $('#experiment-subject-other').hidden = subjectSelect.value !== '__other__';
+    $('#experiment-subject-other').required = subjectSelect.value === '__other__';
+    $('#experiment-number').value = record.experimentNumber || '';
     $('#experiment-language').value = record.language || '';
     $('#experiment-code').value = record.sourceCode || '';
     $('#form-kicker').textContent = record.id ? 'EXPERIMENT CONTENT' : 'NEW CONTENT';
@@ -265,6 +277,7 @@
     $('#password-form').addEventListener('submit', event => changePassword(event, 'current-password', 'new-password', 'confirm-password'));
     $('#first-password-form').addEventListener('submit', event => changePassword(event, 'first-current-password', 'first-new-password', 'first-confirm-password', true));
     $('#experiment-title').addEventListener('input', () => { if (!$('#experiment-id').value) $('#experiment-slug').value = slugify($('#experiment-title').value); });
+    $('#experiment-subject').addEventListener('change', () => { const other = $('#experiment-subject-other'); other.hidden = $('#experiment-subject').value !== '__other__'; other.required = !other.hidden; if (!other.hidden) other.focus(); else other.value = ''; });
     $('#save-experiment').addEventListener('click', () => saveDraft());
     $('#publish-experiment').addEventListener('click', publishFromForm);
     $('#preview-experiment').addEventListener('click', previewFromForm);

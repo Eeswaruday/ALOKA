@@ -1,6 +1,7 @@
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
   const state = { experiments: [], questionIndex: 0, search: '', savedOnly: false };
+  const defaultSubjects = ['DL (Deep Learning Lab)', 'FLUTTER Lab', 'NLP Lab', 'FSD-2 Lab'];
   const apiSetting = (window.ALOKA_API_URL || '').trim();
   const localPhp = ['localhost', '127.0.0.1'].includes(location.hostname) && location.port === '8000';
   const apiUrl = apiSetting || (localPhp ? new URL('/api/admin.php', location.origin).href : '');
@@ -50,14 +51,21 @@
   function renderLibrary() {
     const items = filtered(), saved = bookmarks(), list = $('#experiment-list'); list.replaceChildren();
     $('#saved-count').textContent = saved.length; $('#library-count').textContent = `${String(items.length).padStart(2, '0')} AVAILABLE`;
-    items.forEach((item, index) => {
-      const row = make('article', 'experiment-row');
-      row.append(make('span', 'row-number', String(index + 1).padStart(2, '0')));
-      const title = make('button', 'row-title experiment-open', item.title); title.type = 'button'; title.dataset.open = item.id;
-      const summary = document.createElement('div'); summary.append(title, make('div', 'row-subtitle', item.language || '')); row.append(summary);
-      row.append(make('span', 'row-tags', (item.tags || []).join(' / ')));
-      const save = make('button', 'save-button', saved.includes(item.id) ? '★' : '☆'); save.type = 'button'; save.dataset.save = item.id; save.setAttribute('aria-pressed', String(saved.includes(item.id))); save.setAttribute('aria-label', `Save ${item.title}`); row.append(save);
-      row.querySelector('[data-open]').addEventListener('click', () => openExperiment(item)); list.append(row);
+    const groups = new Map();
+    items.forEach(item => { const subject = item.subject || 'Other experiments'; if (!groups.has(subject)) groups.set(subject, []); groups.get(subject).push(item); });
+    [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([subject, experiments]) => {
+      const group = make('section', 'experiment-group'); group.append(make('h3', 'experiment-group-title', subject));
+      experiments.sort((a, b) => String(a.experimentNumber || '').localeCompare(String(b.experimentNumber || ''), undefined, { numeric: true, sensitivity: 'base' }) || a.title.localeCompare(b.title));
+      experiments.forEach((item, index) => {
+        const row = make('article', 'experiment-row');
+        row.append(make('span', 'row-number', item.experimentNumber || String(index + 1).padStart(2, '0')));
+        const title = make('button', 'row-title experiment-open', item.title); title.type = 'button'; title.dataset.open = item.id;
+        const summary = document.createElement('div'); summary.append(title, make('div', 'row-subtitle', item.language || '')); row.append(summary);
+        row.append(make('span', 'row-tags', (item.tags || []).join(' / ')));
+        const save = make('button', 'save-button', saved.includes(item.id) ? '★' : '☆'); save.type = 'button'; save.dataset.save = item.id; save.setAttribute('aria-pressed', String(saved.includes(item.id))); save.setAttribute('aria-label', `Save ${item.title}`); row.append(save);
+        row.querySelector('[data-open]').addEventListener('click', () => openExperiment(item)); group.append(row);
+      });
+      list.append(group);
     });
     $('#empty-state').hidden = items.length > 0;
     $('#library-status').textContent = state.experiments.length ? `${state.experiments.length} published ${state.experiments.length === 1 ? 'experiment' : 'experiments'}.` : 'No published experiments are available yet.';
@@ -79,8 +87,8 @@
     $('#question-text').textContent = q.question; $('#answer-text').textContent = q.answer; $('#answer-text').hidden = true; $('#reveal-answer').setAttribute('aria-expanded', 'false'); $('#reveal-answer').textContent = 'Reveal answer ＋';
   }
   function setup() {
-    $('.menu-toggle').addEventListener('click', e => { const button = e.currentTarget, open = button.getAttribute('aria-expanded') !== 'true'; button.setAttribute('aria-expanded', String(open)); $('#site-nav').classList.toggle('is-open', open); });
-    $('#site-nav').addEventListener('click', e => { if (e.target.closest('a')) { $('#site-nav').classList.remove('is-open'); $('.menu-toggle').setAttribute('aria-expanded', 'false'); } });
+    $('.menu-toggle').addEventListener('click', e => { const button = e.currentTarget, open = button.getAttribute('aria-expanded') !== 'true'; button.setAttribute('aria-expanded', String(open)); button.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation'); $('#site-nav').classList.toggle('is-open', open); });
+    $('#site-nav').addEventListener('click', e => { if (e.target.closest('a')) { $('#site-nav').classList.remove('is-open'); $('.menu-toggle').setAttribute('aria-expanded', 'false'); $('.menu-toggle').setAttribute('aria-label', 'Open navigation'); } });
     $('#search').addEventListener('input', e => { state.search = e.target.value.trim(); renderLibrary(); });
     $('#subject-filter').addEventListener('change', renderLibrary); $('#category-filter').addEventListener('change', renderLibrary);
     $('#saved-filter').addEventListener('click', e => { state.savedOnly = !state.savedOnly; e.currentTarget.setAttribute('aria-pressed', String(state.savedOnly)); e.currentTarget.classList.toggle('is-active', state.savedOnly); renderLibrary(); });
@@ -110,7 +118,7 @@
         result = { experiments, subjects, categories };
       }
       state.experiments = Array.isArray(result.experiments) ? result.experiments.filter(item => item && item.status === 'published') : [];
-      selectOptions($('#subject-filter'), result.subjects || state.experiments.map(item => item.subject), 'subjects');
+      selectOptions($('#subject-filter'), [...defaultSubjects, ...(result.subjects || []), ...state.experiments.map(item => item.subject)], 'subjects');
       selectOptions($('#category-filter'), result.categories || state.experiments.map(item => item.category), 'categories');
       renderLibrary(); renderQuestion();
       const target = decodeURIComponent(location.hash.replace(/^#experiment\//, ''));

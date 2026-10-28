@@ -62,10 +62,12 @@
       <section class="admin-panel" id="panel-add">
         <form id="experiment-form" class="panel-card experiment-form" novalidate>
           <div class="card-heading"><div><p class="admin-kicker" id="form-kicker">NEW CONTENT</p><h2 id="form-title">Add new experiment</h2></div></div>
-          <p class="panel-description">Enter the experiment title, choose its programming language, and paste the source code. Code is stored as text and never executed.</p>
+          <p class="panel-description">Choose a subject and experiment number, then add the title, language, and source code. Code is stored as text and never executed.</p>
           <input id="experiment-id" type="hidden"><input id="experiment-slug" type="hidden"><input id="base-updated-at" type="hidden"><input id="draft-updated-at" type="hidden">
           <div class="form-grid experiment-form-minimal">
             <div class="form-field"><label for="experiment-title">Experiment title</label><input id="experiment-title" maxlength="160" required></div>
+            <div class="form-field"><label for="experiment-subject">Subject</label><select id="experiment-subject" required><option value="">Choose a subject</option><option>DL (Deep Learning Lab)</option><option>FLUTTER Lab</option><option>NLP Lab</option><option>FSD-2 Lab</option><option value="__other__">Other…</option></select><input id="experiment-subject-other" maxlength="100" placeholder="Enter subject name" aria-label="New subject name" hidden></div>
+            <div class="form-field"><label for="experiment-number">Experiment number <small>Optional; use 1, 1a, 1b, etc.</small></label><input id="experiment-number" maxlength="60" placeholder="e.g. 1a"></div>
             <div class="form-field"><label for="experiment-language">Experiment language</label><select id="experiment-language" required><option value="">Choose a language</option><option>C</option><option>C++</option><option>Java</option><option>Python</option><option>JavaScript</option><option>HTML/CSS</option><option>Other</option></select></div>
             <div class="form-field span-two"><label for="experiment-code">Source code</label><textarea id="experiment-code" class="code-input" rows="18" spellcheck="false" autocapitalize="off" autocomplete="off" required placeholder="Paste the complete program here"></textarea></div>
           </div>
