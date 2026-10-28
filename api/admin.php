@@ -153,11 +153,16 @@ try {
         $draft = null;
         foreach ($drafts as $item) if (($item['id'] ?? '') === $id) { $draft = $item; break; }
         if (!$direct && (!$draft || ($draft['updatedAt'] ?? '') !== $expectedDraft)) throw new AdminApiError(409, 'This draft changed or no longer exists. Refresh and retry.');
-        if ($direct && $draft && (($draft['updatedAt'] ?? '') !== $expectedDraft || (string) ($draft['baseUpdatedAt'] ?? '') !== $submittedBase)) throw new AdminApiError(409, 'This draft changed elsewhere. Reload it before publishing.');
         $collection = admin_catalog_read('experiments');
         $liveIndex = null;
         foreach ($collection['items'] as $i => $item) if (is_array($item) && ($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'published') { $liveIndex = $i; break; }
-        $base = $direct ? (string) ($draft['baseUpdatedAt'] ?? $submittedBase) : (string) ($draft['baseUpdatedAt'] ?? '');
+        $base = $direct ? $submittedBase : (string) ($draft['baseUpdatedAt'] ?? '');
+        if ($direct && $base === '' && $liveIndex !== null) {
+            $usedIds = array_fill_keys(array_map(static fn($item) => (string) ($item['id'] ?? ''), array_merge($collection['items'], $drafts)), true);
+            $stem = substr($id, 0, 92); $suffix = 2;
+            do { $id = $stem . '-' . $suffix++; } while (isset($usedIds[$id]));
+            $rawRecord['id'] = $id; $rawRecord['slug'] = $id; $liveIndex = null; $draft = null;
+        }
         $record = $direct ? admin_validate_experiment(array_merge($draft ?? ($liveIndex === null ? [] : $collection['items'][$liveIndex]), $rawRecord)) : $draft;
         if ($base === '' && $liveIndex !== null) throw new AdminApiError(409, 'An experiment with this identifier is already published.');
         if ($base !== '' && ($liveIndex === null || (string) ($collection['items'][$liveIndex]['updatedAt'] ?? '') !== $base)) throw new AdminApiError(409, 'The published experiment changed. Reload before publishing.');
