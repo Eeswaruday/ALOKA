@@ -3,7 +3,7 @@
   const apiUrlSetting = (window.ALOKA_ADMIN_API_URL || '').trim();
   const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname) && ['8000', ''].includes(location.port);
   const apiUrl = apiUrlSetting || (isLocal ? new URL('/api/admin.php', location.origin).href : '');
-  const state = { csrf: '', content: { published: [], drafts: [], subjects: [], categories: [], stats: {} }, sessionExpired: false };
+  const state = { csrf: '', content: { published: [], drafts: [], subjects: [], categories: [], stats: {} }, sessionExpired: false, editingRecord: false, saving: false, publishing: false };
 
   function notice(message, error = false) {
     const node = $('#admin-notice') || $('#login-notice');
@@ -51,6 +51,7 @@
     button.dataset.action = action;
     if (id) button.dataset.id = id;
     if (source) button.dataset.source = source;
+    if (action === 'publish') button.disabled = state.publishing;
     return button;
   }
   function activatePanel(name) {
@@ -62,6 +63,15 @@
   }
   function slugify(value) { return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 100); }
   function byId(items, id) { return items.find(item => item.id === id); }
+  function newExperimentSlug() {
+    const subject = $('#experiment-subject').value === '__other__' ? $('#experiment-subject-other').value : $('#experiment-subject').value;
+    const base = slugify([subject, $('#experiment-number').value, $('#experiment-title').value].filter(Boolean).join(' ')) || `experiment-${crypto.randomUUID()}`;
+    const used = new Set([...state.content.published, ...state.content.drafts].map(item => item.id));
+    let candidate = base, suffix = 2;
+    while (used.has(candidate)) candidate = `${base.slice(0, 94)}-${suffix++}`;
+    return candidate;
+  }
+  function refreshNewSlug() { if (!state.editingRecord) $('#experiment-slug').value = newExperimentSlug(); }
 
   function renderContent() {
     const { published, drafts } = state.content;
@@ -129,15 +139,16 @@
   function collectExperiment() {
     const title = $('#experiment-title').value.trim();
     const subject = $('#experiment-subject').value === '__other__' ? $('#experiment-subject-other').value.trim() : $('#experiment-subject').value;
-    const slug = $('#experiment-slug').value || slugify(title) || `experiment-${crypto.randomUUID()}`;
+    const slug = state.editingRecord ? $('#experiment-slug').value : newExperimentSlug();
     $('#experiment-slug').value = slug;
-    $('#experiment-id').value ||= slug;
+    $('#experiment-id').value = state.editingRecord ? $('#experiment-id').value : slug;
     return { id: $('#experiment-id').value, slug, title, subject, experimentNumber: $('#experiment-number').value.trim(), language: $('#experiment-language').value, sourceCode: $('#experiment-code').value };
   }
   function fillExperiment(record) {
     const form = $('#experiment-form');
     form.reset();
     $('#experiment-id').value = record.id || '';
+    state.editingRecord = Boolean(record.id);
     $('#base-updated-at').value = record.status === 'draft' ? record.baseUpdatedAt || '' : record.updatedAt || '';
     $('#draft-updated-at').value = record.status === 'draft' ? record.updatedAt || '' : '';
     $('#experiment-slug').value = record.slug || record.id || '';
@@ -169,14 +180,16 @@
   }
   function newExperiment() { fillExperiment({}); }
   async function saveDraft(showMessage = true) {
+    if (state.saving || state.publishing) return null;
     const form = $('#experiment-form');
     if (!form.reportValidity()) return null;
     const button = $('#save-experiment');
-    setBusy(button, true);
+    state.saving = true; setBusy(button, true); setBusy($('#publish-experiment'), true);
     try {
       const result = await request('save-experiment', { method: 'POST', body: { experiment: collectExperiment(), baseUpdatedAt: $('#base-updated-at').value, draftUpdatedAt: $('#draft-updated-at').value } });
       const draft = result.experiment;
       $('#experiment-id').value = draft.id;
+      state.editingRecord = true;
       $('#experiment-slug').value = draft.slug;
       $('#experiment-slug').readOnly = true;
       $('#base-updated-at').value = draft.baseUpdatedAt || '';
@@ -185,34 +198,43 @@
       if (showMessage) notice('Draft saved to the GitHub drafts branch.');
       return draft;
     } catch (error) { notice(error.message, true); return null; }
-    finally { setBusy(button, false); }
+    finally { state.saving = false; setBusy(button, false); setBusy($('#publish-experiment'), false); }
   }
-  async function publishDraft(id, draftUpdatedAt, confirmed = false) {
+  async function publishDraft(id, draftUpdatedAt) {
+    if (state.publishing || state.saving) return;
     const draft = byId(state.content.drafts, id);
     if (!draft) return notice('Draft not found. Refresh the list and try again.', true);
-    if (!confirmed && !await confirmAction('Publish experiment?', `Publish “${draft.title}” to the student catalogue? This creates a GitHub commit.`, 'Publish')) return;
+    state.publishing = true; setBusy($('#publish-experiment'), true); setBusy($('#save-experiment'), true);
     try {
-      const result = await request('publish-experiment', { method: 'POST', body: { id, draftUpdatedAt: draftUpdatedAt || draft.updatedAt } });
+      if (!await confirmAction('Publish experiment?', `Publish “${draft.title}” to the student catalogue? This creates a GitHub commit.`, 'Publish')) return;
+      const result = await request('publish-experiment', { method: 'POST', body: { id, experiment: draft, baseUpdatedAt: draft.baseUpdatedAt || '', draftUpdatedAt: draftUpdatedAt || draft.updatedAt } });
       await loadContent();
       notice(result.draft_cleared ? `Published “${draft.title}” to the student catalogue.` : `Published “${draft.title}”, but its GitHub draft record could not be cleared.`, !result.draft_cleared);
     } catch (error) { notice(error.message, true); }
+    finally { state.publishing = false; setBusy($('#publish-experiment'), false); setBusy($('#save-experiment'), false); }
   }
   async function publishFromForm() {
+    if (state.publishing || state.saving) return;
     if (!$('#experiment-form').reportValidity()) return;
     const record = collectExperiment();
     const existingDraft = byId(state.content.drafts, record.id);
     const published = byId(state.content.published, record.id);
     const sameAsPublished = published && record.title === published.title && record.language === published.language && record.sourceCode === published.sourceCode;
-    if (!existingDraft && published && sameAsPublished) return notice(`“${published.title}” is already published.`);
+    if (!existingDraft && published && sameAsPublished && record.subject === published.subject && record.experimentNumber === (published.experimentNumber || '')) return notice(`“${published.title}” is already published.`);
     if (existingDraft && existingDraft.updatedAt !== $('#draft-updated-at').value) return notice('This draft changed after you opened it. Reopen the latest draft before publishing.', true);
     if (existingDraft && (existingDraft.baseUpdatedAt || '') !== (published?.updatedAt || '')) return notice('The published experiment changed. Reopen the latest version before publishing.', true);
-    if (!existingDraft && $('#draft-updated-at').value) return notice('This draft was already published or removed. Refresh the experiment list before continuing.', true);
     if (!existingDraft && published && $('#base-updated-at').value !== published.updatedAt) return notice('The published experiment changed. Reopen the latest version before publishing.', true);
     if (!existingDraft && !published && $('#base-updated-at').value) return notice('The published experiment was removed. Refresh the experiment list before continuing.', true);
     const title = record.title;
-    if (!await confirmAction('Publish experiment?', `Publish “${title}” to the student catalogue now?`, 'Publish')) return;
-    const draft = await saveDraft(false);
-    if (draft) await publishDraft(draft.id, draft.updatedAt, true);
+    state.publishing = true; setBusy($('#publish-experiment'), true); setBusy($('#save-experiment'), true);
+    try {
+      if (!await confirmAction('Publish experiment?', `Publish “${title}” to the student catalogue now? This commits directly to GitHub.`, 'Publish')) return;
+      const result = await request('publish-experiment', { method: 'POST', body: { experiment: record, baseUpdatedAt: $('#base-updated-at').value, draftUpdatedAt: $('#draft-updated-at').value } });
+      await loadContent();
+      fillExperiment({}); activatePanel('experiments');
+      notice(`Published “${title}” to the student catalogue.`);
+    } catch (error) { notice(error.message, true); }
+    finally { state.publishing = false; setBusy($('#publish-experiment'), false); setBusy($('#save-experiment'), false); }
   }
   function previewFromForm() {
     if (!$('#experiment-form').reportValidity()) return;
@@ -276,8 +298,8 @@
     $('#settings-logout').addEventListener('click', logout);
     $('#password-form').addEventListener('submit', event => changePassword(event, 'current-password', 'new-password', 'confirm-password'));
     $('#first-password-form').addEventListener('submit', event => changePassword(event, 'first-current-password', 'first-new-password', 'first-confirm-password', true));
-    $('#experiment-title').addEventListener('input', () => { if (!$('#experiment-id').value) $('#experiment-slug').value = slugify($('#experiment-title').value); });
-    $('#experiment-subject').addEventListener('change', () => { const other = $('#experiment-subject-other'); other.hidden = $('#experiment-subject').value !== '__other__'; other.required = !other.hidden; if (!other.hidden) other.focus(); else other.value = ''; });
+    ['experiment-title', 'experiment-number', 'experiment-subject-other'].forEach(id => $(`#${id}`).addEventListener('input', refreshNewSlug));
+    $('#experiment-subject').addEventListener('change', () => { const other = $('#experiment-subject-other'); other.hidden = $('#experiment-subject').value !== '__other__'; other.required = !other.hidden; if (!other.hidden) other.focus(); else other.value = ''; refreshNewSlug(); });
     $('#save-experiment').addEventListener('click', () => saveDraft());
     $('#publish-experiment').addEventListener('click', publishFromForm);
     $('#preview-experiment').addEventListener('click', previewFromForm);

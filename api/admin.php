@@ -143,20 +143,26 @@ try {
         admin_json(['ok' => true, 'experiment' => $result]);
     }
     if ($action === 'publish-experiment') {
-        $id = strtolower(trim((string) ($input['id'] ?? '')));
+        $direct = is_array($input['experiment'] ?? null);
+        $rawRecord = $direct ? $input['experiment'] : null;
+        $id = strtolower(trim((string) ($direct ? ($rawRecord['id'] ?? '') : ($input['id'] ?? ''))));
         $expectedDraft = (string) ($input['draftUpdatedAt'] ?? '');
-        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $id) || $expectedDraft === '') throw new AdminApiError(400, 'Draft identifier is invalid.');
+        $submittedBase = (string) ($input['baseUpdatedAt'] ?? '');
+        if (!preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $id) || (!$direct && $expectedDraft === '')) throw new AdminApiError(400, 'Experiment identifier is invalid.');
         $drafts = admin_experiment_drafts_read();
         $draft = null;
         foreach ($drafts as $item) if (($item['id'] ?? '') === $id) { $draft = $item; break; }
-        if (!$draft || ($draft['updatedAt'] ?? '') !== $expectedDraft) throw new AdminApiError(409, 'This draft changed or no longer exists. Refresh and retry.');
+        if (!$direct && (!$draft || ($draft['updatedAt'] ?? '') !== $expectedDraft)) throw new AdminApiError(409, 'This draft changed or no longer exists. Refresh and retry.');
+        if ($direct && $draft && (($draft['updatedAt'] ?? '') !== $expectedDraft || (string) ($draft['baseUpdatedAt'] ?? '') !== $submittedBase)) throw new AdminApiError(409, 'This draft changed elsewhere. Reload it before publishing.');
         $collection = admin_catalog_read('experiments');
         $liveIndex = null;
         foreach ($collection['items'] as $i => $item) if (is_array($item) && ($item['id'] ?? '') === $id && ($item['status'] ?? '') === 'published') { $liveIndex = $i; break; }
-        $base = (string) ($draft['baseUpdatedAt'] ?? '');
+        $base = $direct ? (string) ($draft['baseUpdatedAt'] ?? $submittedBase) : (string) ($draft['baseUpdatedAt'] ?? '');
+        $record = $direct ? admin_validate_experiment(array_merge($draft ?? ($liveIndex === null ? [] : $collection['items'][$liveIndex]), $rawRecord)) : $draft;
         if ($base === '' && $liveIndex !== null) throw new AdminApiError(409, 'An experiment with this identifier is already published.');
         if ($base !== '' && ($liveIndex === null || (string) ($collection['items'][$liveIndex]['updatedAt'] ?? '') !== $base)) throw new AdminApiError(409, 'The published experiment changed. Reload before publishing.');
-        $publishedRecord = $draft;
+        $publishedRecord = $record;
+        $publishedRecord['createdAt'] = (string) (($draft['createdAt'] ?? null) ?: ($liveIndex === null ? gmdate(DATE_ATOM) : ($collection['items'][$liveIndex]['createdAt'] ?? gmdate(DATE_ATOM))));
         unset($publishedRecord['baseUpdatedAt']);
         $publishedRecord['status'] = 'published';
         $publishedRecord['updatedAt'] = gmdate(DATE_ATOM);
@@ -164,11 +170,11 @@ try {
         else $publishedRecord['publishedAt'] = $collection['items'][$liveIndex]['publishedAt'] ?? $publishedRecord['updatedAt'];
         if ($liveIndex === null) $collection['items'][] = $publishedRecord; else $collection['items'][$liveIndex] = $publishedRecord;
         $saved = admin_catalog_write('experiments', $collection['items'], $collection['sha'], 'Publish experiment: ' . $publishedRecord['title']);
-        $cleanup = true;
-        try {
-            admin_experiment_drafts_update(static function (array $items) use ($id, $expectedDraft): array {
-                $next = array_values(array_filter($items, static fn($item) => ($item['id'] ?? '') !== $id || ($item['updatedAt'] ?? '') !== $expectedDraft));
-                return [$next, null];
+        $cleanup = $draft === null;
+        if ($draft !== null) try {
+            $cleanup = admin_experiment_drafts_update(static function (array $items) use ($id, $expectedDraft): array {
+                foreach ($items as $item) if (($item['id'] ?? '') === $id && ($item['updatedAt'] ?? '') !== $expectedDraft) return [$items, false];
+                return [array_values(array_filter($items, static fn($item) => ($item['id'] ?? '') !== $id)), true];
             });
         } catch (Throwable) { $cleanup = false; }
         admin_json(['ok' => true, 'commit' => $saved['commit']['sha'] ?? '', 'draft_cleared' => $cleanup]);
