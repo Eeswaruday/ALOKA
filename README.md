@@ -4,7 +4,7 @@ ALOKA is a responsive lab-experiment learning site built with HTML, CSS, vanilla
 
 ## Local preview
 
-Run `php -S localhost:8000` from the repository root and open `http://localhost:8000`. The student catalogue reads published entries from the PHP API when configured, or from the committed `data/*.json` files on a static host such as Vercel. The admin interface requires the PHP host to be configured first. For local secrets, use the ignored `.env`/`api/config.php` setup; never commit either.
+Run `php -S localhost:8000` from the repository root and open `http://localhost:8000`. The student catalogue reads published entries from the PHP API when configured, or from the committed `data/*.json` files on a static host such as Vercel. The admin interface requires the PHP host to be configured first. The local PHP development server reads the ignored `.env` file; set `ADMIN_PASSWORD` there for the initial login. Never commit `.env` or `api/config.php`.
 
 ## Admin and content
 

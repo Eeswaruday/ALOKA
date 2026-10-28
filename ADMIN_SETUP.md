@@ -8,12 +8,12 @@ Use PHP 8.1 or later with cURL, sessions, and HTTPS. Generate the initial passwo
 
 - `ADMIN_ENABLED=1`
 - `ADMIN_EMAIL=admin@example.com`
-- `ADMIN_PASSWORD_HASH=<generated password hash>`
+- `ADMIN_PASSWORD=<initial password>` (server environment only; the API hashes it in memory before verification)
 - `ADMIN_FORCE_PASSWORD_CHANGE=1`
 - `ALOKA_PRIVATE_DIR=<persistent writable path outside the web root>`
 - `ALLOWED_FRONTEND_ORIGINS=<exact HTTPS frontend origin>`
 
-The first login must replace the initial password. The updated password hash and drafts are saved in `ALOKA_PRIVATE_DIR`; back it up securely. Keep this directory outside the public document root and persistent across deploys. If a TLS proxy is used, forward `X-Forwarded-Proto: https`.
+The first login must replace the initial password. The updated password hash and drafts are saved in `ALOKA_PRIVATE_DIR`; back it up securely. Keep this directory outside the public document root and persistent across deploys. If a TLS proxy is used, forward `X-Forwarded-Proto: https`. A password hash is safer to store than a plaintext password; never commit either value.
 
 ## Connect GitHub
 
@@ -28,7 +28,7 @@ The repository is public, so experiment drafts stay in `ALOKA_PRIVATE_DIR` and a
 
 ## Current deployment status
 
-The public catalogue works from the static JSON bundled with the Vercel deployment. The current PHP admin API is not deployed on Vercel, so live login, private drafts, and publishing are unavailable. Do not deploy the current file-backed API on Render Free: its filesystem is temporary and its service can sleep when idle.
+The public catalogue works from the static JSON bundled with the Vercel deployment. The current PHP admin API is not deployed on Vercel, so live login, private drafts, and publishing are unavailable. Do not deploy the current file-backed API on Render Free: its filesystem is temporary and its service can sleep when idle. A server-side `ADMIN_PASSWORD` variable alone does not deploy the missing API.
 
 The no-paid-hosting design is Vercel Functions plus a private Vercel Blob store for admin sessions and drafts. After the API is migrated, connect a private Blob store in the Vercel project's Storage tab and set backend-only environment variables in Vercel. Never expose tokens or password hashes in browser JavaScript, Git, or chat.
 

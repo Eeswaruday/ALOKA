@@ -4,6 +4,14 @@ declare(strict_types=1);
 // Local-only config.php is gitignored; production credentials come from the PHP host environment.
 $localAdminConfig = __DIR__ . '/config.php';
 if (is_file($localAdminConfig)) require_once $localAdminConfig;
+if (PHP_SAPI === 'cli-server' && is_file(dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env')) {
+    foreach (file(dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (!preg_match('/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/', $line, $match) || getenv($match[1]) !== false) continue;
+        $value = trim($match[2]);
+        if (strlen($value) >= 2 && (($value[0] === '"' && str_ends_with($value, '"')) || ($value[0] === "'" && str_ends_with($value, "'")))) $value = substr($value, 1, -1);
+        putenv($match[1] . '=' . $value);
+    }
+}
 
 final class AdminApiError extends RuntimeException
 {
@@ -141,6 +149,10 @@ function admin_credentials(): array
     }
     $email = strtolower(admin_env('ADMIN_EMAIL'));
     $initialHash = admin_env('ADMIN_PASSWORD_HASH');
+    if ($initialHash === '' || !password_get_info($initialHash)['algo']) {
+        $initialPassword = admin_env('ADMIN_PASSWORD');
+        $initialHash = $initialPassword === '' ? '' : password_hash($initialPassword, PASSWORD_DEFAULT);
+    }
     if ($email === '' || $initialHash === '' || !password_get_info($initialHash)['algo']) {
         throw new AdminApiError(503, 'Admin credentials are not configured on the PHP host.');
     }
