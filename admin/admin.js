@@ -331,7 +331,7 @@
       await bootstrap();
       const result = await request('login', { method: 'POST', body: { email: $('#admin-email').value, password: $('#admin-password').value } });
       state.csrf = result.csrf || state.csrf;
-      location.href = result.must_change ? '../dashboard/?password=required' : '../dashboard/';
+      location.href = result.must_change ? '/admin/dashboard/?password=required' : '/admin/dashboard/';
     } catch (error) { notice(error.message, true); }
     finally { setBusy(button, false); }
   });
