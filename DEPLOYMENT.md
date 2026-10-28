@@ -1,13 +1,22 @@
 # ALOKA deployment
 
-## Static frontend
+## Vercel deployment
 
-Connect `Eeswaruday/ALOKA` to Vercel, choose `main`, use the repository root, and select the static/Other preset with no build command. PHP files are not executed by Vercel. With `window.ALOKA_API_URL` blank, the student catalogue reads the public `data/experiments.json`, `data/subjects.json`, and `data/categories.json` files bundled in the deployment. Commits to `main` automatically redeploy the connected Vercel project, so published GitHub JSON appears in the next deployment. Set `window.ALOKA_API_URL` to the PHP endpoint only if you want the frontend to read through that host.
+Connect `Eeswaruday/ALOKA` to Vercel, deploy the `main` branch from the repository root, and use the static/Other preset with no build command. `api/admin.js` runs as a Vercel Node Function; the PHP files are for local PHP development only. Add the variables below under Vercel Project → Settings → Environment Variables for Production and Preview, then redeploy:
 
-## Admin API status
+```text
+ADMIN_ENABLED=1
+ADMIN_EMAIL=your-admin-email
+ADMIN_PASSWORD=choose-a-strong-password
+GITHUB_TOKEN=<fine-grained token with Contents read/write for Eeswaruday/ALOKA>
+GITHUB_REPOSITORY_OWNER=Eeswaruday
+GITHUB_REPOSITORY_NAME=ALOKA
+GITHUB_PRODUCTION_BRANCH=main
+GITHUB_DRAFT_BRANCH=aloka-drafts
+```
 
-The public catalogue is static and remains available from the JSON files in `data/`. Admin login, private drafts, and publishing need a server API. Vercel's static hosting does not execute the current PHP API. Render Free cannot safely host its current file-backed sessions and drafts because its filesystem is temporary and is cleared on restarts; persistent disks require a paid service. The free route is to move the API to Vercel Functions and store private state in a private Vercel Blob store. That API migration has not been deployed yet.
+Keep these values in Vercel server-side environment variables only; do not place them in `js/api-config.js` or commit them. The browser calls `/api/admin`; the public catalogue is served from the deployed JSON. Saving a draft commits `data/admin-drafts.json` to `aloka-drafts`. Publishing commits `data/experiments.json` to `main`, which starts Vercel’s automatic deployment when the GitHub integration is connected.
 
 ## Verification
 
-The public static deployment is separate from the admin API. Never put GitHub tokens or password hashes in browser code or Git; backend secrets belong in server-side environment variables.
+This uses Vercel’s included function allowance and GitHub Contents API; no database or paid storage is required. The GitHub repository must grant the token Contents read/write access. Because `aloka-drafts` is a branch of the repository, its draft JSON is visible to anyone who can view the repository. Use this only if that is acceptable for experiment drafts.

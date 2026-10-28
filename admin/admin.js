@@ -22,7 +22,7 @@
       headers['X-CSRF-Token'] = state.csrf;
     }
     const response = await fetch(url, { method, credentials: 'include', headers, body: body ? JSON.stringify(body) : undefined });
-    const result = await response.json().catch(() => ({ error: 'The PHP server returned an unreadable response.' }));
+    const result = await response.json().catch(() => ({ error: 'The server returned an unreadable response.' }));
     if (response.status === 401 && $('#admin-nav') && result.error === 'Sign in again to continue.') {
       location.href = state.sessionExpired ? '/admin/login/?expired=1' : '/admin/login/';
       throw Error('Your admin session expired. Sign in again.');
@@ -182,7 +182,7 @@
       $('#base-updated-at').value = draft.baseUpdatedAt || '';
       $('#draft-updated-at').value = draft.updatedAt || '';
       await loadContent();
-      if (showMessage) notice('Draft saved privately on the PHP host.');
+      if (showMessage) notice('Draft saved to the GitHub drafts branch.');
       return draft;
     } catch (error) { notice(error.message, true); return null; }
     finally { setBusy(button, false); }
@@ -194,7 +194,7 @@
     try {
       const result = await request('publish-experiment', { method: 'POST', body: { id, draftUpdatedAt: draftUpdatedAt || draft.updatedAt } });
       await loadContent();
-      notice(result.draft_cleared ? `Published “${draft.title}” to the student catalogue.` : `Published “${draft.title}”, but the private draft file could not be cleared. Contact the site owner.` , !result.draft_cleared);
+      notice(result.draft_cleared ? `Published “${draft.title}” to the student catalogue.` : `Published “${draft.title}”, but its GitHub draft record could not be cleared.`, !result.draft_cleared);
     } catch (error) { notice(error.message, true); }
   }
   async function publishFromForm() {
@@ -228,7 +228,7 @@
   }
   async function deleteExperiment(id, source) {
     const record = source === 'draft' ? byId(state.content.drafts, id) : byId(state.content.published, id);
-    if (!record || !await confirmAction('Delete experiment?', `Delete “${record.title}”? ${source === 'published' ? 'This removes it from the student catalogue and creates a recoverable GitHub history commit.' : 'This removes the private draft.'}`, 'Delete')) return;
+    if (!record || !await confirmAction('Delete experiment?', `Delete “${record.title}”? ${source === 'published' ? 'This removes it from the student catalogue and creates a recoverable GitHub history commit.' : 'This removes its GitHub draft record.'}`, 'Delete')) return;
     try {
       await request('delete-experiment', { method: 'POST', body: { id, source, confirmTitle: record.title } });
       await loadContent();

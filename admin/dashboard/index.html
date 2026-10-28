@@ -7,9 +7,9 @@
   <title>Admin workspace — ALOKA</title>
   <link rel="icon" type="image/png" href="/assets/aloka-logo.png">
   <link rel="stylesheet" href="/admin/admin.css?v=4">
-  <script src="/js/api-config.js?v=1" defer></script>
+  <script src="/js/api-config.js?v=2" defer></script>
   <script src="/admin/admin-config.js?v=2" defer></script>
-  <script src="/admin/admin.js?v=9" defer></script>
+  <script src="/admin/admin.js?v=10" defer></script>
 </head>
 <body class="dashboard-page">
   <div class="admin-layout">
@@ -40,7 +40,7 @@
       <section class="admin-panel is-active" id="panel-overview">
         <div class="overview-grid">
           <article class="overview-card"><span>PUBLISHED EXPERIMENTS</span><strong id="stat-published">—</strong><small>Visible to students</small></article>
-          <article class="overview-card"><span>DRAFT EXPERIMENTS</span><strong id="stat-drafts">—</strong><small>Private to this PHP host</small></article>
+          <article class="overview-card"><span>DRAFT EXPERIMENTS</span><strong id="stat-drafts">—</strong><small>Saved in the GitHub drafts branch</small></article>
         </div>
         <div class="panel-card overview-welcome">
           <p class="admin-kicker">READY WHEN YOU ARE</p><h2>Build the lab library.</h2>
@@ -53,7 +53,7 @@
       <section class="admin-panel" id="panel-experiments">
         <div class="panel-card">
           <div class="card-heading"><div><p class="admin-kicker">CONTENT LIBRARY</p><h2>Manage experiments</h2></div><button class="admin-primary" type="button" data-go="add">Add new experiment +</button></div>
-          <p class="panel-description">Edit published work by saving a private draft. Student content changes only when you publish.</p>
+          <p class="panel-description">Drafts are saved to GitHub. Publishing commits the experiment to the student catalogue and starts a Vercel deployment.</p>
           <label class="sr-only" for="manage-search">Search experiments</label><input id="manage-search" class="manager-search" type="search" placeholder="Search by title or language">
           <ul id="experiment-manager-list" class="content-list"></ul>
         </div>
@@ -75,7 +75,7 @@
         </form>
       </section>
 
-      <section class="admin-panel" id="panel-drafts"><div class="panel-card"><p class="admin-kicker">PRIVATE TO THIS PHP HOST</p><h2>Experiment drafts</h2><p class="panel-description">Draft content stays in the server’s private storage. Only published experiments are written to the public GitHub repository.</p><ul id="draft-manager-list" class="content-list"></ul></div></section>
+      <section class="admin-panel" id="panel-drafts"><div class="panel-card"><p class="admin-kicker">GITHUB DRAFT BRANCH</p><h2>Experiment drafts</h2><p class="panel-description">Drafts and source code are stored in the repository’s aloka-drafts branch. Published experiments are committed to main and trigger Vercel deployment.</p><ul id="draft-manager-list" class="content-list"></ul></div></section>
       <section class="admin-panel" id="panel-published"><div class="panel-card"><p class="admin-kicker">STUDENT CATALOGUE</p><h2>Published experiments</h2><p class="panel-description">Deleting a published experiment commits that removal to GitHub. Repository history can restore a previous version.</p><ul id="published-manager-list" class="content-list"></ul></div></section>
 
       <section class="admin-panel" id="panel-history"><div class="panel-card"><div class="card-heading"><div><p class="admin-kicker">GITHUB VERSION HISTORY</p><h2>Content history</h2></div><button id="refresh-history" class="admin-secondary" type="button">Refresh</button></div><p class="panel-description">Recent commits for the published experiment catalogue. Deleted or replaced content can be recovered from a prior commit.</p><ol id="commit-list" class="commit-list"></ol></div></section>
