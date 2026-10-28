@@ -4,7 +4,7 @@ ALOKA is a responsive lab-experiment learning site built with HTML, CSS, vanilla
 
 ## Local preview
 
-Run `php -S localhost:8000` from the repository root and open `http://localhost:8000`. The student catalogue reads published entries from the PHP API; local JSON files no longer provide demo fallbacks. The admin interface requires the PHP host to be configured first. For local secrets, use the ignored `.env`/`api/config.php` setup; never commit either.
+Run `php -S localhost:8000` from the repository root and open `http://localhost:8000`. The student catalogue reads published entries from the PHP API when configured, or from the committed `data/*.json` files on a static host such as Vercel. The admin interface requires the PHP host to be configured first. For local secrets, use the ignored `.env`/`api/config.php` setup; never commit either.
 
 ## Admin and content
 
@@ -14,6 +14,6 @@ The repository is public, so drafts are kept off GitHub to prevent unpublished w
 
 ## Deployment
 
-The frontend is static and can be deployed to Vercel from the repository root. PHP endpoints in `api/` require a separate PHP 8.1+ host with cURL, sessions, HTTPS, and persistent private storage. Set `window.ALOKA_API_URL` in `js/api-config.js` to that host’s `https://.../api/admin.php` URL, and configure the PHP host to allow the exact frontend origin. See [DEPLOYMENT.md](DEPLOYMENT.md).
+The frontend is static and can be deployed to Vercel from the repository root. GitHub commits to the production branch trigger Vercel redeployment; the frontend then reads the published `data/*.json` files from that deployment. PHP endpoints in `api/` require a separate PHP 8.1+ host with cURL, sessions, HTTPS, and persistent private storage. The PHP host keeps the GitHub token private and writes published experiments to GitHub. Set `window.ALOKA_API_URL` in `js/api-config.js` only when the PHP API should serve the public catalogue directly. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Clerk remains the optional browser-side sign-in for regular users. Resend is not used in the current login or password-change flows. `api/health.php` reports integration booleans only.

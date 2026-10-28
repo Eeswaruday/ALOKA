@@ -94,12 +94,21 @@
   }
   async function init() {
     setup();
-    if (!apiUrl) { $('#library-status').textContent = 'The experiment API is not configured. Ask the site administrator to connect the PHP API.'; $('#library-status').classList.add('is-error'); renderHero(); return; }
     try {
-      const url = new URL(apiUrl); url.searchParams.set('action', 'public-experiments');
-      const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
-      if (!response.ok) throw new Error(`API request failed (${response.status}).`);
-      const result = await response.json();
+      let result;
+      if (apiUrl) {
+        const url = new URL(apiUrl); url.searchParams.set('action', 'public-experiments');
+        const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
+        if (!response.ok) throw new Error(`API request failed (${response.status}).`);
+        result = await response.json();
+      } else {
+        const files = ['experiments', 'subjects', 'categories'];
+        const responses = await Promise.all(files.map(file => fetch(new URL(`data/${file}.json`, document.baseURI), { cache: 'no-store' })));
+        const failed = responses.find(response => !response.ok);
+        if (failed) throw new Error(`Published catalogue request failed (${failed.status}).`);
+        const [experiments, subjects, categories] = await Promise.all(responses.map(response => response.json()));
+        result = { experiments, subjects, categories };
+      }
       state.experiments = Array.isArray(result.experiments) ? result.experiments.filter(item => item && item.status === 'published') : [];
       selectOptions($('#subject-filter'), result.subjects || state.experiments.map(item => item.subject), 'subjects');
       selectOptions($('#category-filter'), result.categories || state.experiments.map(item => item.category), 'categories');
