@@ -1,2 +1,2 @@
-// Set the full PHP API URL here for the deployed static frontend.
-window.ALOKA_API_URL = '';
+// Vercel proxies this path to the private PHP API service.
+window.ALOKA_API_URL = '/api/admin.php';

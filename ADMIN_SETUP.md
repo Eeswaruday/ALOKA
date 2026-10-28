@@ -26,8 +26,10 @@ Create a fine-grained token restricted to this repository with Contents read/wri
 
 The repository is public, so experiment drafts stay in `ALOKA_PRIVATE_DIR` and are never committed to a GitHub draft branch. Publishing creates a commit on the production branch. Do not enable the editor for arbitrary repository files or send unpublished content to a public branch.
 
-## Connect the static site
+## Deploy with Vercel and Render
 
-Set `window.ALOKA_API_URL` in `js/api-config.js` to the PHP API’s full HTTPS URL, for example `https://api.example.com/api/admin.php`. Add the exact static site origin to `ALLOWED_FRONTEND_ORIGINS`. Cross-origin admin sessions require HTTPS on both hosts and credentialed CORS. Keep tokens and password hashes out of `js/`, Vercel settings, and Git.
+Create a Render Blueprint for this repository from `render.yaml`. Enter `ADMIN_ENABLED=1`, the admin email, the password hash, and the fine-grained GitHub token in Render's protected environment settings. The hash must be generated with `php api/hash-admin-password.php`; never enter a plain-text password as `ADMIN_PASSWORD_HASH`. The Blueprint mounts persistent storage at `/var/data/aloka` for sessions, password state, and drafts. A Render plan with persistent-disk support is required.
+
+The frontend's `/api/` requests are proxied by Vercel to `aloka-admin-api-eeswaruday.onrender.com`, configured in `vercel.json`. Keep the Render service name unchanged so its hostname matches. If Render reports that name is unavailable, update the hostname in `vercel.json` to the hostname Render assigns, then redeploy Vercel. The current allowed browser origin is `https://aloka-share.vercel.app`.
 
 Run `php -l api/admin.php`, `php -l api/admin-common.php`, and `php -l api/health.php` before deploying. `api/health.php` returns configuration booleans and never secret values.

@@ -105,7 +105,7 @@
     try {
       let result;
       if (apiUrl) {
-        const url = new URL(apiUrl); url.searchParams.set('action', 'public-experiments');
+        const url = new URL(apiUrl, location.origin); url.searchParams.set('action', 'public-experiments');
         const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
         if (!response.ok) throw new Error(`API request failed (${response.status}).`);
         result = await response.json();

@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: aloka-admin-api-eeswaruday
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health.php
+    disk:
+      name: aloka-admin-data
+      mountPath: /var/data/aloka
+      sizeGB: 1
+    envVars:
+      - key: ALOKA_PRIVATE_DIR
+        value: /var/data/aloka
+      - key: ALLOWED_FRONTEND_ORIGINS
+        value: https://aloka-share.vercel.app
+      - key: GITHUB_REPOSITORY_OWNER
+        value: Eeswaruday
+      - key: GITHUB_REPOSITORY_NAME
+        value: ALOKA
+      - key: GITHUB_PRODUCTION_BRANCH
+        value: main
+      - key: GITHUB_DRAFT_BRANCH
+        value: aloka-drafts
+      - key: ADMIN_ENABLED
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: ADMIN_FORCE_PASSWORD_CHANGE
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false

@@ -14,7 +14,7 @@
   }
   async function request(action, { method = 'GET', body } = {}) {
     if (!apiUrl) throw Error('Admin API is not configured. Set its HTTPS URL in js/api-config.js.');
-    const url = new URL(apiUrl);
+    const url = new URL(apiUrl, location.origin);
     url.searchParams.set('action', action);
     const headers = {};
     if (method === 'POST') {
