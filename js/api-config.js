@@ -1,2 +1,2 @@
-// Vercel proxies this path to the private PHP API service.
-window.ALOKA_API_URL = '/api/admin.php';
+// Empty uses the static GitHub catalogue until the Vercel API is configured.
+window.ALOKA_API_URL = '';
