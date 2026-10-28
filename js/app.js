@@ -1,6 +1,6 @@
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
-  const state = { experiments: [], questionIndex: 0, search: '', savedOnly: false };
+  const state = { experiments: [], subjects: [], questionIndex: 0, search: '', savedOnly: false, selectedSubject: '' };
   const defaultSubjects = ['DL (Deep Learning Lab)', 'FLUTTER Lab', 'NLP Lab', 'FSD-2 Lab'];
   const apiSetting = (window.ALOKA_API_URL || '').trim();
   const localPhp = ['localhost', '127.0.0.1'].includes(location.hostname) && location.port === '8000';
@@ -41,20 +41,33 @@
     items.forEach(value => select.add(new Option(value, value)));
     select.value = [...select.options].some(option => option.value === selected) ? selected : 'all';
   }
-  function filtered() {
-    const query = state.search.toLowerCase(); const subject = $('#subject-filter').value; const category = $('#category-filter').value; const saved = bookmarks();
+  function filtered(subject = state.selectedSubject) {
+    const query = state.search.toLowerCase(); const category = $('#category-filter').value; const saved = bookmarks();
     return state.experiments.filter(item => {
       const haystack = [item.title, item.subject, item.category, item.language, item.description, item.aim, item.sourceCode, ...(item.tags || [])].map(text).join(' ').toLowerCase();
       return (!query || haystack.includes(query)) && (subject === 'all' || item.subject === subject) && (category === 'all' || item.category === category) && (!state.savedOnly || saved.includes(item.id));
     });
   }
   function renderLibrary() {
-    const items = filtered(), saved = bookmarks(), list = $('#experiment-list'); list.replaceChildren();
-    $('#saved-count').textContent = saved.length; $('#library-count').textContent = `${String(items.length).padStart(2, '0')} AVAILABLE`;
+    const items = filtered(), allItems = filtered('all'), saved = bookmarks(), list = $('#experiment-list'), subjects = $('#subject-list'); list.replaceChildren(); subjects.replaceChildren();
+    $('#saved-count').textContent = saved.length; $('#library-count').textContent = `${String(allItems.length).padStart(2, '0')} AVAILABLE`;
+    subjects.hidden = Boolean(state.selectedSubject); list.hidden = !state.selectedSubject;
+    if (!state.selectedSubject) {
+      const counts = new Map(); allItems.forEach(item => counts.set(item.subject || 'Other experiments', (counts.get(item.subject || 'Other experiments') || 0) + 1));
+      const names = [...new Set([...defaultSubjects, ...state.subjects, ...state.experiments.map(item => item.subject).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
+      names.forEach((subject, index) => {
+        const count = counts.get(subject) || 0, button = make('button', 'subject-card'); button.type = 'button'; button.setAttribute('aria-label', `${subject}, ${count} ${count === 1 ? 'experiment' : 'experiments'}`);
+        button.append(make('span', 'subject-card-number', String(index + 1).padStart(2, '0')), make('strong', 'subject-card-title', subject), make('span', 'subject-card-count', `${count} ${count === 1 ? 'experiment' : 'experiments'}`), make('span', 'subject-card-arrow', '↗'));
+        button.addEventListener('click', () => { state.selectedSubject = subject; renderLibrary(); }); subjects.append(button);
+      });
+    } else {
+      const heading = make('div', 'subject-list-heading'), back = make('button', 'subject-back', '← All subjects'); back.type = 'button'; back.addEventListener('click', () => { state.selectedSubject = ''; renderLibrary(); });
+      heading.append(back, make('h3', '', state.selectedSubject), make('span', '', `${items.length} ${items.length === 1 ? 'experiment' : 'experiments'}`)); list.append(heading);
+    }
     const groups = new Map();
     items.forEach(item => { const subject = item.subject || 'Other experiments'; if (!groups.has(subject)) groups.set(subject, []); groups.get(subject).push(item); });
-    [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([subject, experiments]) => {
-      const group = make('section', 'experiment-group'); group.append(make('h3', 'experiment-group-title', subject));
+    [...groups].sort(([a], [b]) => a.localeCompare(b)).forEach(([, experiments]) => {
+      const group = make('section', 'experiment-group');
       experiments.sort((a, b) => String(a.experimentNumber || '').localeCompare(String(b.experimentNumber || ''), undefined, { numeric: true, sensitivity: 'base' }) || a.title.localeCompare(b.title));
       experiments.forEach((item, index) => {
         const row = make('article', 'experiment-row');
@@ -67,8 +80,10 @@
       });
       list.append(group);
     });
-    $('#empty-state').hidden = items.length > 0;
-    $('#library-status').textContent = state.experiments.length ? `${state.experiments.length} published ${state.experiments.length === 1 ? 'experiment' : 'experiments'}.` : 'No published experiments are available yet.';
+    $('#empty-state').hidden = state.selectedSubject ? items.length > 0 : state.experiments.length > 0;
+    $('#empty-state h3').textContent = state.selectedSubject ? `No experiments in ${state.selectedSubject} yet.` : 'No experiments published yet.';
+    $('#empty-state p').textContent = state.selectedSubject ? 'Choose another subject to browse its published experiments.' : 'New laboratory experiments will appear here once the administrator publishes them.';
+    $('#library-status').textContent = state.selectedSubject ? '' : `${allItems.length} matching ${allItems.length === 1 ? 'experiment' : 'experiments'} across ${new Set(allItems.map(item => item.subject).filter(Boolean)).size} subjects.`;
     renderHero();
   }
   function renderHero() {
@@ -90,7 +105,7 @@
     $('.menu-toggle').addEventListener('click', e => { const button = e.currentTarget, open = button.getAttribute('aria-expanded') !== 'true'; button.setAttribute('aria-expanded', String(open)); button.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation'); $('#site-nav').classList.toggle('is-open', open); });
     $('#site-nav').addEventListener('click', e => { if (e.target.closest('a')) { $('#site-nav').classList.remove('is-open'); $('.menu-toggle').setAttribute('aria-expanded', 'false'); $('.menu-toggle').setAttribute('aria-label', 'Open navigation'); } });
     $('#search').addEventListener('input', e => { state.search = e.target.value.trim(); renderLibrary(); });
-    $('#subject-filter').addEventListener('change', renderLibrary); $('#category-filter').addEventListener('change', renderLibrary);
+    $('#category-filter').addEventListener('change', renderLibrary);
     $('#saved-filter').addEventListener('click', e => { state.savedOnly = !state.savedOnly; e.currentTarget.setAttribute('aria-pressed', String(state.savedOnly)); e.currentTarget.classList.toggle('is-active', state.savedOnly); renderLibrary(); });
     $('#experiment-list').addEventListener('click', e => { const button = e.target.closest('[data-save]'); if (!button) return; const current = bookmarks(), id = button.dataset.save; localStorage.setItem('aloka.saved', JSON.stringify(current.includes(id) ? current.filter(x => x !== id) : [...current, id])); renderLibrary(); toast('Bookmarks are saved on this device.'); });
     $('#close-experiment').addEventListener('click', () => { $('#experiment-dialog').close(); if (location.hash.startsWith('#experiment/')) history.replaceState(null, '', '#experiments'); });
@@ -118,7 +133,7 @@
         result = { experiments, subjects, categories };
       }
       state.experiments = Array.isArray(result.experiments) ? result.experiments.filter(item => item && item.status === 'published') : [];
-      selectOptions($('#subject-filter'), [...defaultSubjects, ...(result.subjects || []), ...state.experiments.map(item => item.subject)], 'subjects');
+      state.subjects = Array.isArray(result.subjects) ? result.subjects.filter(subject => typeof subject === 'string') : [];
       selectOptions($('#category-filter'), result.categories || state.experiments.map(item => item.category), 'categories');
       renderLibrary(); renderQuestion();
       const target = decodeURIComponent(location.hash.replace(/^#experiment\//, ''));
