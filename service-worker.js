@@ -1,4 +1,4 @@
-const CACHE = 'aloka-static-v10';
+const CACHE = 'aloka-static-v11';
 const FILES = ['./', './index.html', './css/main.css', './js/app.js', './js/api-config.js', './manifest.json', './privacy.html', './assets/aloka-wordmark.webp', './assets/aloka-wordmark-3x.webp', './assets/aloka-wordmark.png', './assets/aloka-logo.png', './googleff60cb51d01ab7bb.html'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil((async () => {

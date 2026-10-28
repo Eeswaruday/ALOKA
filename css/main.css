@@ -35,6 +35,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,.search-box:focus-withi
 .viva-intro .eyebrow,.question-meta{color:#b8c7e4}.viva-intro h2 span{color:#91a8d5}.viva-intro .button{border-color:#8ca1ca}.viva-intro .button:hover{background:#a9f06b;border-color:#a9f06b;color:#111a2e}
 .question-card{border-color:#6c82aa}.question-card h3{font-size:clamp(22px,2.6vw,30px)}.answer-toggle{border-color:#7084a7}.answer-toggle:hover{color:#b7f589}.answer-text{padding:16px 18px;border-left:2px solid #a9f06b;background:#ffffff0a;color:#e2e9f5}
 .viva-all-button{display:block;margin-top:13px;padding:8px 0;border:0;background:transparent;color:#cbd7ed;font:600 11px var(--sans);text-decoration:underline;text-underline-offset:4px;cursor:pointer}.viva-all-button:hover{color:#b7f589}
-.experiment-dialog-inner{scrollbar-gutter:stable}.detail-section pre{border:1px solid #263047;border-radius:3px;scrollbar-gutter:stable}
+.experiment-dialog{overflow:hidden}.experiment-dialog-inner{max-height:min(90dvh,900px);overflow-y:auto;overflow-x:hidden;scrollbar-gutter:auto}.detail-section pre{border:1px solid #263047;border-radius:3px;scrollbar-gutter:auto}
 html,body,*{scrollbar-width:none;-ms-overflow-style:none}*::-webkit-scrollbar{display:none;width:0;height:0}
 @media(max-width:640px){body{font-size:16px}.viva-panel{padding:30px 24px}.question-card h3{font-size:23px}.hero-experiment-copy,.row-title{font-size:14px}}
+
+#experiment-dialog,.experiment-dialog-inner,.detail-section pre{scrollbar-width:none!important;-ms-overflow-style:none!important}#experiment-dialog::-webkit-scrollbar,.experiment-dialog-inner::-webkit-scrollbar,.detail-section pre::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}#experiment-dialog::-webkit-scrollbar-button,.experiment-dialog-inner::-webkit-scrollbar-button,.detail-section pre::-webkit-scrollbar-button{display:none!important;width:0!important;height:0!important}
