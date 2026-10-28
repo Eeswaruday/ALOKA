@@ -1,6 +1,6 @@
 (() => {
   const $ = (selector, root = document) => root.querySelector(selector);
-  const state = { experiments: [], subjects: [], questionIndex: 0, search: '', savedOnly: false, selectedSubject: '', heroSubject: '' };
+  const state = { experiments: [], subjects: [], questionIndex: 0, vivaExperimentId: '', search: '', savedOnly: false, selectedSubject: '', heroSubject: '' };
   const defaultSubjects = ['DL (Deep Learning Lab)', 'FLUTTER Lab', 'NLP Lab', 'FSD-2 Lab'];
   const apiSetting = (window.ALOKA_API_URL || '').trim();
   const localPhp = ['localhost', '127.0.0.1'].includes(location.hostname) && location.port === '8000';
@@ -16,9 +16,34 @@
     else section.append(make('p', '', value));
     parent.append(section);
   }
+  function vivaQuestions(item) {
+    const supplied = (item.vivaQuestions || []).filter(q => q && q.question && q.answer), code = text(item.sourceCode), generated = [];
+    const add = (question, answer) => generated.push({ question, answer });
+    if (item.title) add('What is the main objective of this experiment?', item.aim || item.description || `The experiment is titled “${item.title}”.`);
+    const imports = code.split('\n').filter(line => /^\s*(import\s|from\s.+\simport\s)/.test(line));
+    if (imports.length) add('Which libraries or modules does the program import?', imports.join('\n'));
+    const dataset = code.match(/(?:from\s+([\w.]+\s+import\s+)?|\b)([\w.]+)\.load_data\s*\(/);
+    if (dataset) add('Which dataset does the code actually load?', `${dataset[2]} is loaded in the source code.${/mnist|digit classification/i.test(item.title || '') && /boston_housing/.test(code) ? ' Note: the title mentions digit classification, but this code uses Boston Housing data.' : ''}`);
+    if (/x_train\s*=.*mean|\.std\s*\(/i.test(code) && /x_test/.test(code)) add('Why does the program standardize its input data?', 'It scales features using the training data mean and standard deviation so inputs are on comparable scales. The same training statistics are applied to the test data to avoid using test data to fit the preprocessing.');
+    if (/sequential\s*\(/i.test(code)) add('What does the Sequential model represent here?', 'It applies the listed neural-network layers in order, passing each layer’s output to the next.');
+    const dense = [...code.matchAll(/Dense\s*\(([^)]*)\)/gi)].map(match => match[1]);
+    if (dense.length) add('What do the Dense layers specify?', dense.map((layer, index) => `Layer ${index + 1}: Dense(${layer.trim()})`).join('; ') + '.');
+    const loss = code.match(/loss\s*=\s*['"]([^'"]+)/i), optimizer = code.match(/optimizer\s*=\s*['"]([^'"]+)/i);
+    if (loss || optimizer) add('How is the model compiled?', `The optimizer is ${optimizer?.[1] || 'not specified'} and the loss is ${loss?.[1] || 'not specified'}.`);
+    const epochs = code.match(/epochs\s*=\s*(\d+)/i);
+    if (/\.fit\s*\(/i.test(code)) add('How does this program train its model?', `It calls fit() with the training data${epochs ? ` for ${epochs[1]} epochs` : ''}.`);
+    if (/\.predict\s*\(/i.test(code)) add('What is the purpose of the prediction step?', 'The trained model uses predict() to produce outputs for the supplied input data.');
+    if (/plt\.scatter|\.scatter\s*\(/i.test(code)) add('What does the scatter plot help you inspect?', 'It compares pairs of values visually; in this source the axes are labeled actual and predicted price, so it helps inspect how close predictions are to actual values.');
+    if (/\bfor\s+\w+\s+in\s+/.test(code)) add('Where does the program repeat work?', 'A for loop iterates over a sequence, applying its indented block to each item.');
+    if (/\bdef\s+\w+\s*\(/.test(code)) add('Why are functions useful in this program?', 'A function groups reusable steps behind a name, making the program easier to organize and call.');
+    const unique = new Set(supplied.map(q => q.question.trim().toLowerCase()));
+    return [...supplied, ...generated.filter(q => !unique.has(q.question.toLowerCase()))];
+  }
   function openExperiment(item) {
+    state.vivaExperimentId = item.id; state.questionIndex = 0; renderQuestion();
     const host = $('#experiment-detail-content'); host.replaceChildren();
     host.append(make('p', 'eyebrow', item.language || ''), make('h2', '', item.title));
+    const practice = make('button', 'copy-button', 'Practice this experiment’s Viva ↓'); practice.type = 'button'; practice.addEventListener('click', () => { $('#experiment-dialog').close(); $('#viva').scrollIntoView({ behavior: 'smooth' }); $('#next-question').focus({ preventScroll: true }); }); host.append(practice);
     detailSection(host, 'Description', item.description); detailSection(host, 'Aim', item.aim); detailSection(host, 'Prerequisites', item.prerequisites); detailSection(host, 'Algorithm', item.algorithm); detailSection(host, 'Procedure', item.procedure, true); detailSection(host, 'Explanation', item.explanation);
     if (item.sourceCode) {
       const section = make('section', 'detail-section'); section.append(make('h3', '', `Source code · ${item.language || 'Code'}`));
@@ -28,8 +53,6 @@
     detailSection(host, 'Sample input', item.sampleInput); detailSection(host, 'Sample output', item.sampleOutput || item.expectedOutput); detailSection(host, 'Time complexity', item.timeComplexity); detailSection(host, 'Space complexity', item.spaceComplexity); detailSection(host, 'Reference notes', item.referenceNotes);
     const related = state.experiments.filter(other => other.id !== item.id && (other.subject === item.subject || other.category === item.category)).slice(0, 4);
     if (related.length) { const section = make('section', 'detail-section'); section.append(make('h3', '', 'Related experiments')); related.forEach(other => { const link = make('button', 'related-experiment-link', other.title); link.type = 'button'; link.addEventListener('click', () => openExperiment(other)); section.append(link); }); host.append(section); }
-    const viva = (item.vivaQuestions || []).filter(q => q && q.question && q.answer);
-    if (viva.length) { const section = make('section', 'detail-section'); section.append(make('h3', '', 'Viva questions')); const list = document.createElement('ol'); viva.forEach(q => { const li = document.createElement('li'); li.append(make('strong', '', q.question), make('p', '', q.answer)); list.append(li); }); section.append(list); host.append(section); }
     $('#experiment-dialog').showModal();
     location.hash = `experiment/${encodeURIComponent(item.slug || item.id)}`;
   }
@@ -110,8 +133,10 @@
     items.forEach(item => { const button = make('button', 'hero-experiment', ''); button.type = 'button'; button.append(make('span', 'hero-experiment-copy', item.title), make('small', 'hero-experiment-language', `${item.subject || 'Experiment'} · ${item.language || ''}`), make('span', 'hero-experiment-arrow', '↗')); button.addEventListener('click', () => openExperiment(item)); list.append(button); });
   }
   function renderQuestion() {
-    const questions = state.experiments.flatMap(item => (item.vivaQuestions || []).filter(q => q && q.question && q.answer).map(q => ({ ...q, subject: item.subject, title: item.title })));
-    $('#question-card').hidden = !questions.length; $('#viva-empty').hidden = questions.length > 0; $('#next-question').disabled = questions.length < 2;
+    const experiments = state.experiments.filter(item => !state.vivaExperimentId || item.id === state.vivaExperimentId);
+    const questions = experiments.flatMap(item => vivaQuestions(item).map(q => ({ ...q, subject: item.subject, title: item.title })));
+    $('#question-card').hidden = !questions.length; $('#viva-empty').hidden = questions.length > 0; $('#next-question').disabled = questions.length < 2; $('#all-viva').hidden = !state.vivaExperimentId;
+    $('#viva-empty').textContent = state.experiments.length ? 'Choose an experiment to start a focused Viva practice session.' : 'Viva questions will appear here when an experiment is published.';
     if (!questions.length) return;
     state.questionIndex %= questions.length; const q = questions[state.questionIndex];
     $('#question-subject').textContent = `${q.subject || 'VIVA'} · ${q.title}`.toUpperCase(); $('#question-count').textContent = `${String(state.questionIndex + 1).padStart(2, '0')} / ${String(questions.length).padStart(2, '0')}`;
@@ -128,6 +153,7 @@
     $('#experiment-dialog').addEventListener('click', e => { if (e.target === e.currentTarget) $('#close-experiment').click(); });
     $('#reveal-answer').addEventListener('click', () => { const open = $('#reveal-answer').getAttribute('aria-expanded') !== 'true'; $('#reveal-answer').setAttribute('aria-expanded', String(open)); $('#answer-text').hidden = !open; $('#reveal-answer').textContent = open ? 'Hide answer −' : 'Reveal answer ＋'; });
     $('#next-question').addEventListener('click', () => { state.questionIndex++; renderQuestion(); });
+    $('#all-viva').addEventListener('click', () => { state.vivaExperimentId = ''; state.questionIndex = 0; renderQuestion(); });
     document.addEventListener('keydown', e => { if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); $('#search').focus(); } });
     $('#year').textContent = new Date().getFullYear();
   }
